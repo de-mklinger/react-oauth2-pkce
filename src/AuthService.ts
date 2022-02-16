@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/camelcase */
 import { createPKCECodes, PKCECodePair } from './pkce'
 import { toUrlEncoded } from './util'
-
 import jwtDecode from 'jwt-decode'
 
 export interface AuthServiceProps {
@@ -29,13 +27,6 @@ export interface AuthTokens {
   token_type: string
 }
 
-export interface JWTIDToken {
-  given_name: string
-  family_name: string
-  name: string
-  email: string
-}
-
 export interface TokenRequestBody {
   clientId: string
   grantType: string
@@ -46,7 +37,18 @@ export interface TokenRequestBody {
   codeVerifier?: string
 }
 
-export class AuthService<TIDToken = JWTIDToken> {
+export interface IdTokenPayload {
+  iss?: string
+  sub?: string
+  aud?: string | string[]
+  jti?: string
+  nbf?: number
+  exp?: number
+  iat?: number
+  [propName: string]: unknown
+}
+
+export class AuthService<TIDToken = IdTokenPayload> {
   props: AuthServiceProps
   timeout?: number
 
@@ -69,11 +71,12 @@ export class AuthService<TIDToken = JWTIDToken> {
     }
   }
 
-  getUser(): {} {
+  getUser(): TIDToken | undefined {
     const t = this.getAuthTokens()
-    if (null === t) return {}
-    const decoded = jwtDecode(t.id_token) as TIDToken
-    return decoded
+    if (!t) {
+      return undefined
+    }
+    return jwtDecode(t.id_token)
   }
 
   getCodeFromLocation(location: Location): string | null {
@@ -132,8 +135,12 @@ export class AuthService<TIDToken = JWTIDToken> {
     window.localStorage.setItem('auth', JSON.stringify(auth))
   }
 
-  getAuthTokens(): AuthTokens {
-    return JSON.parse(window.localStorage.getItem('auth') || '{}')
+  getAuthTokens(): AuthTokens | undefined {
+    const json = window.localStorage.getItem('auth')
+    if (!json) {
+      return undefined
+    }
+    return JSON.parse(json)
   }
 
   isPending(): boolean {
@@ -147,18 +154,18 @@ export class AuthService<TIDToken = JWTIDToken> {
     return window.localStorage.getItem('auth') !== null
   }
 
-  async logout(shouldEndSession: boolean = false): Promise<boolean> {
+  async logout(shouldEndSession = false): Promise<boolean> {
     this.removeItem('pkce')
     this.removeItem('auth')
     if (shouldEndSession) {
-      const { clientId, provider, logoutEndpoint, redirectUri } = this.props;
+      const { clientId, provider, logoutEndpoint, redirectUri } = this.props
       const query = {
         client_id: clientId,
         post_logout_redirect_uri: redirectUri
       }
       const url = `${logoutEndpoint || `${provider}/logout`}?${toUrlEncoded(query)}`
       window.location.replace(url)
-      return true;
+      return true
     } else {
       window.location.reload()
       return true
@@ -171,7 +178,14 @@ export class AuthService<TIDToken = JWTIDToken> {
 
   // this will do a full page reload and to to the OAuth2 provider's login page and then redirect back to redirectUri
   async authorize(): Promise<void> {
-    const { clientId, provider, authorizeEndpoint, redirectUri, scopes, audience } = this.props
+    const {
+      clientId,
+      provider,
+      authorizeEndpoint,
+      redirectUri,
+      scopes,
+      audience
+    } = this.props
 
     const pkce = await createPKCECodes()
     window.localStorage.setItem('pkce', JSON.stringify(pkce))
@@ -236,7 +250,7 @@ export class AuthService<TIDToken = JWTIDToken> {
       body: toUrlEncoded(payload)
     })
     this.removeItem('pkce')
-    let json = await response.json()
+    const json = await response.json()
     if (isRefresh && !json.refresh_token) {
       json.refresh_token = payload.refresh_token
     }
@@ -244,7 +258,12 @@ export class AuthService<TIDToken = JWTIDToken> {
     if (autoRefresh) {
       this.startTimer()
     }
-    return this.getAuthTokens()
+
+    const authTokens = this.getAuthTokens()
+    if (!authTokens) {
+      throw new Error('Missing auth tokens')
+    }
+    return authTokens
   }
 
   armRefreshTimer(refreshToken: string, timeoutDuration: number): void {
