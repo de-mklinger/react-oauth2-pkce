@@ -19,7 +19,12 @@ const base64URLEncode = (data: Uint8Array): string => {
     .replace(/=/g, '')
 }
 
-const sha256 = async (data: Uint8Array): Promise<Uint8Array> => {
+const sha256 = async (data: Uint8Array | string): Promise<Uint8Array> => {
+  if (typeof data === 'string') {
+    const textEncoder = new TextEncoder()
+    data = textEncoder.encode(data)
+  }
+
   return window.crypto.subtle
     .digest('SHA-256', data)
     .then((arrayBuffer) => new Uint8Array(arrayBuffer))
@@ -27,7 +32,7 @@ const sha256 = async (data: Uint8Array): Promise<Uint8Array> => {
 
 export const createPKCECodes = async (): Promise<PKCECodePair> => {
   const codeVerifier = base64URLEncode(randomBytes(64))
-  const codeChallenge = base64URLEncode(await sha256(Buffer.from(codeVerifier)))
+  const codeChallenge = base64URLEncode(await sha256(codeVerifier))
   const createdAt = new Date()
   return {
     codeVerifier,
