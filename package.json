@@ -78,6 +78,7 @@
     "dist"
   ],
   "dependencies": {
+    "base64-arraybuffer": "^1.0.2",
     "jwt-decode": "^2.2.0"
   }
 }

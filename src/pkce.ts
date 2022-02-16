@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'crypto'
+import { encode } from 'base64-arraybuffer'
 
 export type PKCECodePair = {
   codeVerifier: string
@@ -6,26 +6,32 @@ export type PKCECodePair = {
   createdAt: Date
 }
 
-export const base64URLEncode = (str: Buffer): string => {
-  return str
-    .toString('base64')
+const randomBytes = (length: number): Uint8Array => {
+  const byteArray = new Uint8Array(length)
+  window.crypto.getRandomValues(byteArray)
+  return byteArray
+}
+
+const base64URLEncode = (data: Uint8Array): string => {
+  return encode(data)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '')
 }
 
-export const sha256 = (buffer: Buffer): Buffer => {
-  return createHash('sha256').update(buffer).digest()
+const sha256 = async (data: Uint8Array): Promise<Uint8Array> => {
+  return window.crypto.subtle
+    .digest('SHA-256', data)
+    .then((arrayBuffer) => new Uint8Array(arrayBuffer))
 }
 
-export const createPKCECodes = (): PKCECodePair => {
+export const createPKCECodes = async (): Promise<PKCECodePair> => {
   const codeVerifier = base64URLEncode(randomBytes(64))
-  const codeChallenge = base64URLEncode(sha256(Buffer.from(codeVerifier)))
+  const codeChallenge = base64URLEncode(await sha256(Buffer.from(codeVerifier)))
   const createdAt = new Date()
-  const codePair = {
+  return {
     codeVerifier,
     codeChallenge,
     createdAt
   }
-  return codePair
 }

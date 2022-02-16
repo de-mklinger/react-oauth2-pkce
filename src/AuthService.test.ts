@@ -1,6 +1,5 @@
-import { AuthService, AuthTokens, AuthServiceProps } from './AuthService'
-
-// import tokens from './__fixtures__/tokens.json'
+import { AuthService, AuthServiceProps } from './AuthService'
+import { PKCECodePair } from './pkce'
 
 const props: AuthServiceProps = {
   clientId: 'testClientID',
@@ -12,16 +11,18 @@ const props: AuthServiceProps = {
   scopes: ['openid', 'profile']
 }
 
-const stubTokens: AuthTokens = {
-  accessToken: 'accessToken',
-  idToken: 'idToken',
-  refreshToken: 'refreshToken',
-  expiresIn: 3600,
-  tokenType: 'Bearer'
+const stubPKCECodePair: PKCECodePair = {
+  codeVerifier: 'codeVerifier',
+  codeChallenge: 'codeChallenge',
+  createdAt: new Date()
 }
 
-// const stubToken =
-//   '{"id_token":"id_token","access_token":"access_token","refresh_token":"refresh_token","expires_in":3600,"token_type":"Bearer"}'
+function decodeFormUrlEncodedBody(body: string): { [key: string]: string } {
+  const searchParams = new URL(`https://example.com?${body}`).searchParams
+  const obj = {}
+  searchParams.forEach((value, key) => (obj[key] = value))
+  return obj
+}
 
 const authService = new AuthService(props)
 
@@ -30,19 +31,32 @@ describe('AuthService', () => {
     expect(AuthService).toBeTruthy()
   })
 
-  it('should add requestId to headers', () => {
-    const fakeFetch = jest.fn()
-    window.fetch = fakeFetch
-    const authorizationCode = 'authorizationCode'
-    authService.fetchToken(authorizationCode).then((tokens) => {
-      console.log(tokens)
-      expect(fakeFetch.mock.calls[0][1]).toHaveProperty('headers')
-      expect(fakeFetch.mock.calls[0][1].headers).toHaveProperty('requestId')
-    })
-  })
+  it('should have request body', async () => {
+    const fakeResponse = {
+      json: (): unknown => ({})
+    }
 
-  // it('it parses a token', () => {
-  //   window.localStorage.setItem('auth', tokens)
-  //   authService.getUser()
-  // })
+    const originalFetch = window.fetch
+    try {
+      const fakeFetch = jest.fn()
+      fakeFetch.mockReturnValueOnce(Promise.resolve(fakeResponse))
+      window.fetch = fakeFetch
+
+      window.localStorage.setItem('pkce', JSON.stringify(stubPKCECodePair))
+
+      const authorizationCode = 'authorizationCode'
+      await authService.fetchToken(authorizationCode)
+
+      const formUrlEncodedBody = fakeFetch.mock.calls[0][1].body
+      const bodyProperties = decodeFormUrlEncodedBody(formUrlEncodedBody)
+
+      expect(bodyProperties).toHaveProperty('client_id')
+      expect(bodyProperties).toHaveProperty('redirect_uri')
+      expect(bodyProperties).toHaveProperty('grant_type')
+      expect(bodyProperties).toHaveProperty('code')
+      expect(bodyProperties).toHaveProperty('code_verifier')
+    } finally {
+      window.fetch = originalFetch
+    }
+  })
 })
