@@ -26,7 +26,7 @@
     "eject": "node ../node_modules/react-scripts/bin/react-scripts.js eject"
   },
   "eslintConfig": {
-    "extends": "react-app"
+    "extends": "plugin:react/recommended"
   },
   "browserslist": {
     "production": [
