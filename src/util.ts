@@ -5,7 +5,9 @@ export const toSnakeCase = (str: string): string => {
     .toLowerCase()
 }
 
-export const toUrlEncoded = (obj: Record<string, string>): string => {
+export const toUrlEncoded = (
+  obj: Record<string, string | undefined>
+): string => {
   return Object.keys(obj)
     .filter((k) => obj[k] !== undefined)
     .map(
