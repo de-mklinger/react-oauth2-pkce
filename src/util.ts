@@ -5,11 +5,14 @@ export const toSnakeCase = (str: string): string => {
     .toLowerCase()
 }
 
-export const toUrlEncoded = (obj: {}): string => {
+export const toUrlEncoded = (obj: Record<string, string>): string => {
   return Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
     .map(
       (k) =>
-        encodeURIComponent(toSnakeCase(k)) + '=' + encodeURIComponent(obj[k])
+        encodeURIComponent(toSnakeCase(k)) +
+        '=' +
+        encodeURIComponent(obj[k] as string)
     )
     .join('&')
 }

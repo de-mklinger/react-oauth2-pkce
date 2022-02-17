@@ -16,6 +16,7 @@ export interface AuthServiceProps {
   scopes: string[]
   autoRefresh?: boolean
   refreshSlack?: number
+  localStoragePrefix?: string
 }
 
 export interface AuthTokens {
@@ -48,7 +49,7 @@ export interface IdTokenPayload {
   [propName: string]: unknown
 }
 
-export class AuthService<TIDToken = IdTokenPayload> {
+export class AuthService<IdTokenType = IdTokenPayload> {
   props: AuthServiceProps
   timeout?: number
 
@@ -71,15 +72,19 @@ export class AuthService<TIDToken = IdTokenPayload> {
     }
   }
 
-  getUser(): TIDToken | undefined {
-    const t = this.getAuthTokens()
-    if (!t) {
-      return undefined
+  getUser(): IdTokenType {
+    if (!this.isAuthenticated()) {
+      throw new Error('Not authenticated')
     }
-    return jwtDecode(t.id_token)
+    const authTokens = this.getAuthTokens()
+    if (!authTokens.id_token) {
+      throw new Error('No id token')
+    } else {
+      return jwtDecode(authTokens.id_token)
+    }
   }
 
-  getCodeFromLocation(location: Location): string | null {
+  private getCodeFromLocation(location: Location): string | null {
     const split = location.toString().split('?')
     if (split.length < 2) {
       return null
@@ -94,7 +99,7 @@ export class AuthService<TIDToken = IdTokenPayload> {
     return null
   }
 
-  removeCodeFromLocation(): void {
+  private removeCodeFromLocation(): void {
     const [base, search] = window.location.href.split('?')
     if (!search) {
       return
@@ -112,15 +117,8 @@ export class AuthService<TIDToken = IdTokenPayload> {
     )
   }
 
-  getItem(key: string): string | null {
-    return window.localStorage.getItem(key)
-  }
-  removeItem(key: string): void {
-    window.localStorage.removeItem(key)
-  }
-
   getPkce(): PKCECodePair {
-    const pkce = window.localStorage.getItem('pkce')
+    const pkce = this.getItem('pkce')
     if (null === pkce) {
       throw new Error('PKCE pair not found in local storage')
     } else {
@@ -132,26 +130,24 @@ export class AuthService<TIDToken = IdTokenPayload> {
     const { refreshSlack = 5 } = this.props
     const now = new Date().getTime()
     auth.expires_at = now + (auth.expires_in + refreshSlack) * 1000
-    window.localStorage.setItem('auth', JSON.stringify(auth))
+    this.setItem('auth', JSON.stringify(auth))
   }
 
-  getAuthTokens(): AuthTokens | undefined {
-    const json = window.localStorage.getItem('auth')
-    if (!json) {
-      return undefined
+  getAuthTokens(): AuthTokens {
+    const auth = this.getItem('auth')
+    if (null === auth) {
+      throw new Error('Auth not found in local storage')
+    } else {
+      return JSON.parse(auth)
     }
-    return JSON.parse(json)
   }
 
   isPending(): boolean {
-    return (
-      window.localStorage.getItem('pkce') !== null &&
-      window.localStorage.getItem('auth') === null
-    )
+    return this.haveItem('pkce') && !this.isAuthenticated()
   }
 
   isAuthenticated(): boolean {
-    return window.localStorage.getItem('auth') !== null
+    return this.haveItem('auth')
   }
 
   async logout(shouldEndSession = false): Promise<boolean> {
@@ -176,7 +172,7 @@ export class AuthService<TIDToken = IdTokenPayload> {
     return this.authorize()
   }
 
-  // this will do a full page reload and to to the OAuth2 provider's login page and then redirect back to redirectUri
+  // this will do a full page reload to the OAuth2 provider's login page
   async authorize(): Promise<void> {
     const {
       clientId,
@@ -188,9 +184,9 @@ export class AuthService<TIDToken = IdTokenPayload> {
     } = this.props
 
     const pkce = await createPKCECodes()
-    window.localStorage.setItem('pkce', JSON.stringify(pkce))
-    window.localStorage.setItem('preAuthUri', location.href)
-    window.localStorage.removeItem('auth')
+    this.setItem('pkce', JSON.stringify(pkce))
+    this.setItem('preAuthUri', location.href)
+    this.removeItem('auth')
     const codeChallenge = pkce.codeChallenge
 
     const query = {
@@ -202,7 +198,7 @@ export class AuthService<TIDToken = IdTokenPayload> {
       codeChallenge,
       codeChallengeMethod: 'S256'
     }
-    // Responds with a 302 redirect
+
     const url = `${authorizeEndpoint || `${provider}/authorize`}?${toUrlEncoded(query)}`
     window.location.replace(url)
   }
@@ -247,8 +243,9 @@ export class AuthService<TIDToken = IdTokenPayload> {
         'Content-Type': contentType || 'application/x-www-form-urlencoded'
       },
       method: 'POST',
-      body: toUrlEncoded(payload)
+      body: toUrlEncoded({ ...payload })
     })
+
     this.removeItem('pkce')
     const json = await response.json()
     if (isRefresh && !json.refresh_token) {
@@ -259,11 +256,7 @@ export class AuthService<TIDToken = IdTokenPayload> {
       this.startTimer()
     }
 
-    const authTokens = this.getAuthTokens()
-    if (!authTokens) {
-      throw new Error('Missing auth tokens')
-    }
-    return authTokens
+    return this.getAuthTokens()
   }
 
   armRefreshTimer(refreshToken: string, timeoutDuration: number): void {
@@ -311,12 +304,31 @@ export class AuthService<TIDToken = IdTokenPayload> {
   }
 
   restoreUri(): void {
-    const uri = window.localStorage.getItem('preAuthUri')
-    window.localStorage.removeItem('preAuthUri')
+    const uri = this.getItem('preAuthUri')
+    this.removeItem('preAuthUri')
     console.log({ uri })
     if (uri !== null) {
       window.location.replace(uri)
     }
     this.removeCodeFromLocation()
+  }
+
+  private getItem(key: string): string | null {
+    const { localStoragePrefix = '' } = this.props
+    return window.localStorage.getItem(localStoragePrefix + key)
+  }
+
+  private haveItem(key: string): boolean {
+    return this.getItem(key) !== null
+  }
+
+  private removeItem(key: string): void {
+    const { localStoragePrefix = '' } = this.props
+    window.localStorage.removeItem(localStoragePrefix + key)
+  }
+
+  private setItem(key: string, value: string): void {
+    const { localStoragePrefix = '' } = this.props
+    window.localStorage.setItem(localStoragePrefix + key, value)
   }
 }
