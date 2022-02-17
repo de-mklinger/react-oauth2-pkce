@@ -285,10 +285,10 @@ export class AuthService<IdTokenType = IdTokenPayload> {
   }
 
   startTimer(): void {
-    const authTokens = this.getAuthTokens()
-    if (!authTokens) {
-      return
+    if (!this.isAuthenticated()) {
+      return;
     }
+    const authTokens = this.getAuthTokens()
     const { refresh_token: refreshToken, expires_at: expiresAt } = authTokens
     if (!expiresAt || !refreshToken) {
       return
