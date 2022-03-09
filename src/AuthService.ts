@@ -14,6 +14,7 @@ export interface AuthServiceProps {
   audience?: string
   redirectUri?: string
   scopes: string[]
+  prompts?: string[]
   autoRefresh?: boolean
   refreshSlack?: number
   localStoragePrefix?: string
@@ -180,6 +181,7 @@ export class AuthService<IdTokenType = IdTokenPayload> {
       authorizeEndpoint,
       redirectUri,
       scopes,
+      prompts,
       audience
     } = this.props
 
@@ -192,6 +194,7 @@ export class AuthService<IdTokenType = IdTokenPayload> {
     const query = {
       clientId,
       scope: scopes.join(' '),
+      prompt: prompts?.length ? prompts.join(' ') : undefined,
       responseType: 'code',
       redirectUri,
       ...(audience && { audience }),
