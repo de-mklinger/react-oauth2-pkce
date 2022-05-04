@@ -6,7 +6,6 @@ import jwtEncode from 'jwt-encode';
 const props: AuthServiceProps = {
     clientId: 'testClientID',
     clientSecret: undefined,
-    location,
     provider: 'http://oauth2provider/',
     redirectUri: 'http://localhost/',
     scopes: ['openid', 'profile']
@@ -18,9 +17,9 @@ const stubPKCECodePair: PKCECodePair = {
     createdAt: new Date()
 };
 
-function decodeFormUrlEncodedBody(body: string): { [key: string]: string } {
+function decodeFormUrlEncodedBody(body: string): Record<string, string>  {
     const searchParams = new URL(`https://example.com?${body}`).searchParams;
-    const obj = {};
+    const obj: Record<string, string> = {};
     searchParams.forEach((value, key) => (obj[key] = value));
     return obj;
 }
@@ -60,20 +59,20 @@ function newMockStorage(): Storage {
         getItem(key: string): string | null {
             return items.get(key) ?? null;
         },
-        clear() {
+        clear(): void {
             throw new Error('Unsupported');
         },
-        removeItem(key: string) {
+        removeItem(key: string): void {
             items.delete(key);
         },
-        setItem(key: string, value: string) {
+        setItem(key: string, value: string): void {
             items.set(key, value);
         },
         length: -1
     };
 }
 
-function newMockFetchWithEmptyResponse() {
+function newMockFetchWithEmptyResponse(): jest.Mock {
     const fakeResponse = {
         json: (): unknown => ({})
     };
@@ -168,7 +167,7 @@ describe('AuthService', () => {
                 return super.fetchToken(code, isRefresh);
             }
 
-            protected startRefreshTimer() {
+            protected startRefreshTimer(): void {
                 called = true;
             }
         }
@@ -194,7 +193,7 @@ describe('AuthService', () => {
         });
 
         class LocalAuthService extends AuthService {
-            public removeCodeFromLocation() {
+            public removeCodeFromLocation(): void {
                 super.removeCodeFromLocation();
             }
         }
@@ -493,15 +492,21 @@ describe('AuthService', () => {
     });
 });
 
-function withWindowObjects<T>(mocks: { [key: string]: unknown }, callback: () => Promise<T> | T) {
+function withWindowObjects<T>(mocks: { [key: string]: unknown }, callback: () => Promise<T> | T): Promise<T> {
     const oldWindowObjects: { [key: string]: unknown } = {};
     for (const key in mocks) {
-        oldWindowObjects[key] = window[key];
+        if (key in window) {
+            // @ts-ignore
+            oldWindowObjects[key] = window[key];
+        }
+        // @ts-ignore
         delete window[key];
+        // @ts-ignore
         window[key] = mocks[key];
     }
     return Promise.resolve(callback()).finally(() => {
         for (const key in mocks) {
+            // @ts-ignore
             window[key] = oldWindowObjects[key];
         }
     });
