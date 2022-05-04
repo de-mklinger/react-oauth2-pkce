@@ -58,6 +58,12 @@
     "base64-arraybuffer": "^1.0.2",
     "jwt-decode": "^3.1.2"
   },
+  "x-eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
   "prettier": {
     "semi": true,
     "trailingComma": "none",

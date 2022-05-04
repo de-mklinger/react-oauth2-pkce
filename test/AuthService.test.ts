@@ -17,7 +17,7 @@ const stubPKCECodePair: PKCECodePair = {
     createdAt: new Date()
 };
 
-function decodeFormUrlEncodedBody(body: string): Record<string, string>  {
+function decodeFormUrlEncodedBody(body: string): Record<string, string> {
     const searchParams = new URL(`https://example.com?${body}`).searchParams;
     const obj: Record<string, string> = {};
     searchParams.forEach((value, key) => (obj[key] = value));

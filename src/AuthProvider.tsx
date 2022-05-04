@@ -10,9 +10,5 @@ type AuthProviderProps = PropsWithChildren<{
 export const AuthProvider = (props: AuthProviderProps): ReactElement => {
     const { authService, children } = props;
 
-    return (
-        <AuthContext.Provider value={{ authService }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={{ authService }}>{children}</AuthContext.Provider>;
 };

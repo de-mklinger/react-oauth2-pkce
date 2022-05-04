@@ -3,14 +3,12 @@ import React, { useContext, ReactElement } from 'react';
 import { AuthServiceProps, AuthService } from './AuthService';
 
 export type AuthContextProps = {
-    authService: AuthService
-}
+    authService: AuthService;
+};
 
-export type AuthContextType = AuthContextProps | undefined
+export type AuthContextType = AuthContextProps | undefined;
 
-export const AuthContext = React.createContext<AuthContextProps | undefined>(
-    undefined
-);
+export const AuthContext = React.createContext<AuthContextType>(undefined);
 
 export const useAuth = (): AuthContextProps => {
     const context = useContext(AuthContext);
@@ -27,7 +25,6 @@ export function withAuth<T>(
         const authProps = useAuth();
         return <ComponentToWrap {...authProps} {...props} />;
     };
-    WrappedComponent.displayName =
-        'withAuth_' + (ComponentToWrap.displayName || ComponentToWrap.name);
+    WrappedComponent.displayName = 'withAuth_' + (ComponentToWrap.displayName || ComponentToWrap.name);
     return WrappedComponent;
 }

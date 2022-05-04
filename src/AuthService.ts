@@ -191,7 +191,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     protected async authorize(): Promise<void> {
         const pkce = await this.createPKCECodes();
         this.setItem('pkce', JSON.stringify(pkce));
-        this.setItem('preAuthUri', location.href);
+        this.setItem('preAuthUri', this.getLocation().href);
         this.removeItem('auth');
         const codeChallenge = pkce.codeChallenge;
 
