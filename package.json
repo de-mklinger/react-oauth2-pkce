@@ -5,9 +5,6 @@
   "author": "Gardner Bickford <gardner@bickford.nz>",
   "license": "MIT",
   "repository": "de-mklinger/react-oauth2-pkce",
-  "main": "dist/index.js",
-  "module": "dist/index.modern.js",
-  "source": "src/index.tsx",
   "keywords": [
     "oauth2",
     "pkce",
@@ -15,51 +12,45 @@
     "cognito",
     "gatsby"
   ],
+  "main": "dist/index.js",
+  "module": "dist/mylib-tsdx.esm.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
   "engines": {
     "node": ">=10"
   },
   "scripts": {
-    "build": "microbundle-crl --no-compress --format modern,cjs",
-    "start": "microbundle-crl watch --no-compress --format modern,cjs",
-    "prepublish": "run-s build",
-    "postversion": "git push && git push --tags",
-    "test": "run-s test:unit test:lint test:build",
-    "test:build": "run-s build",
-    "test:lint": "eslint .",
-    "test:unit": "cross-env CI=1 react-scripts test --env=jsdom",
-    "test:watch": "react-scripts test --env=jsdom"
+    "start": "tsdx watch",
+    "build": "tsdx build",
+    "test": "tsdx test --passWithNoTests",
+    "lint": "tsdx lint",
+    "prepare": "tsdx build",
+    "size": "size-limit",
+    "analyze": "size-limit --why"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "tsdx lint"
+    }
   },
   "peerDependencies": {
     "react": ">=17.0.0",
     "react-dom": ">=17.0.0"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^5.14.1",
-    "@testing-library/react": "^12.0.0",
-    "@testing-library/user-event": "^13.2.1",
-    "@types/jest": "^27.0.1",
-    "@types/jwt-encode": "^1.0.0",
-    "@types/react": "^17.0.20",
-    "@types/react-dom": "^17.0.9",
-    "@typescript-eslint/eslint-plugin": "^5.12.0",
-    "@typescript-eslint/parser": "^5.12.0",
-    "cross-env": "^7.0.2",
-    "eslint-config-prettier": "^8.3.0",
-    "eslint-plugin-prettier": "^4.0.0",
-    "eslint-plugin-react": "^7.28.0",
-    "jest-mock-extended": "^2.0.5",
-    "jwt-encode": "^1.0.1",
-    "microbundle-crl": "^0.13.11",
-    "npm-run-all": "^4.1.5",
-    "prettier": "^2.5.1",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
-    "react-scripts": "5.0.0",
-    "typescript": "^4.5.5"
+    "@types/react": "^18.0.8",
+    "@types/react-dom": "^18.0.3",
+    "husky": "^7.0.4",
+    "react": "^18.1.0",
+    "react-dom": "^18.1.0",
+    "size-limit": "^7.0.8",
+    "tsdx": "^0.14.1",
+    "tslib": "^2.4.0",
+    "typescript": "^4.6.4"
   },
-  "files": [
-    "dist"
-  ],
   "dependencies": {
     "base64-arraybuffer": "^1.0.2",
     "jwt-decode": "^3.1.2"

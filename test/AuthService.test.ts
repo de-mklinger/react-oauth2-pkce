@@ -1,5 +1,5 @@
-import { AuthService, AuthServiceProps, AuthTokens } from './AuthService';
-import { PKCECodePair } from './pkce';
+import { AuthService, AuthServiceProps, AuthTokens } from '../src/AuthService';
+import { PKCECodePair } from '../src/pkce';
 import { mock } from 'jest-mock-extended';
 import jwtEncode from 'jwt-encode';
 
