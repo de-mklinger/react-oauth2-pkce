@@ -38,6 +38,7 @@
     "@testing-library/react": "^12.0.0",
     "@testing-library/user-event": "^13.2.1",
     "@types/jest": "^27.0.1",
+    "@types/jwt-encode": "^1.0.0",
     "@types/react": "^17.0.20",
     "@types/react-dom": "^17.0.9",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
@@ -46,6 +47,8 @@
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^4.0.0",
     "eslint-plugin-react": "^7.28.0",
+    "jest-mock-extended": "^2.0.5",
+    "jwt-encode": "^1.0.1",
     "microbundle-crl": "^0.13.11",
     "npm-run-all": "^4.1.5",
     "prettier": "^2.5.1",
@@ -60,5 +63,12 @@
   "dependencies": {
     "base64-arraybuffer": "^1.0.2",
     "jwt-decode": "^3.1.2"
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "none",
+    "singleQuote": true,
+    "printWidth": 120,
+    "tabWidth": 4
   }
 }

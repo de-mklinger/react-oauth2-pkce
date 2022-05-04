@@ -1,14 +1,14 @@
 import React from 'react'
-import { useAuth } from 'react-oauth2-pkce'
+import { useAuth } from '@mklinger/react-oauth2-pkce'
 
-export const Home = () => {
-  const { authService, authTokens } = useAuth()
+export default function Home() {
+  const { authService } = useAuth()
 
   const login = async () => {
-    authService.authorize()
+    return authService.authorize()
   }
   const logout = async () => {
-    authService.logout()
+    return authService.logout()
   }
 
   if (authService.isPending()) {
@@ -18,7 +18,7 @@ export const Home = () => {
   if (!authService.isAuthenticated()) {
     return (
       <div>
-        <p>Not Logged in yet: {authTokens.idToken} </p>
+        <p>Not Logged in yet.</p>
         <button onClick={login}>Login</button>
       </div>
     )
@@ -26,10 +26,8 @@ export const Home = () => {
 
   return (
     <div>
-      <p>Logged in! {authTokens.idToken}</p>
+      <p>Logged in! {authService.getUser()}</p>
       <button onClick={logout}>Logout</button>
     </div>
   )
 }
-
-export default Home

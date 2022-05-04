@@ -1,5 +1,5 @@
 {
-  "name": "react-oauth2-pkce-example",
+  "name": "@mklinger/react-oauth2-pkce-example",
   "homepage": "https://gardner.github.io/react-oauth2-pkce",
   "version": "0.0.0",
   "private": true,
@@ -10,12 +10,9 @@
     "@types/node": "file:../node_modules/@types/node",
     "@types/react": "file:../node_modules/@types/react",
     "@types/react-dom": "file:../node_modules/@types/react-dom",
-    "@types/react-router": "^5.1.7",
-    "@types/react-router-dom": "^5.1.5",
     "react": "file:../node_modules/react",
     "react-dom": "file:../node_modules/react-dom",
-    "react-oauth2-pkce": "file:..",
-    "react-router-dom": "^5.2.0",
+    "@mklinger/react-oauth2-pkce": "file:..",
     "react-scripts": "file:../node_modules/react-scripts",
     "typescript": "file:../node_modules/typescript"
   },
