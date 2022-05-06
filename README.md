@@ -1,8 +1,8 @@
 # react-oauth2-pkce
 
-> Authenticate against generic OAuth2 using PKCE
+Authenticate against generic OAuth2 using PKCE.
 
-[![NPM](https://img.shields.io/npm/v/react-oauth2-pkce.svg)](https://www.npmjs.com/package/react-oauth2-pkce) [![JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
+[![NPM](https://img.shields.io/npm/v/@de-mklinger/react-oauth2-pkce.svg)](https://www.npmjs.com/package/@de-mklinger/react-oauth2-pkce)
 
 ## Install
 
@@ -20,8 +20,7 @@ import { Routes } from './Routes';
 
 const authService = new AuthService({
   clientId: process.env.REACT_APP_CLIENT_ID || 'CHANGEME',
-  location: window.location,
-  provider: process.env.REACT_APP_PROVIDER || 'https://sandbox.auth.ap-southeast-2.amazoncognito.com/oauth2',
+  provider: process.env.REACT_APP_PROVIDER || 'https://auth.example.com',
   redirectUri: process.env.REACT_APP_REDIRECT_URI || window.location.origin,
   scopes: ['openid', 'profile']
 });
@@ -37,13 +36,8 @@ const App = () => {
 export default App
 ```
 
-### Custom Provider/Endpoint
-
-After https://github.com/gardner/react-oauth2-pkce/pull/16 it is possible to pass in just `provider` or `authorizeEndpoint`, `tokenEndpoint` and `logoutEndpoint`. These two parameters were added to maintain backwards compatibility while enabling callers to customize the endpoint.
-
-### End User Session on "Single Application Logout"
-You can end user session when calling `logout(true)`. A custom endpoint can configured by passing `logoutEndpoint` as props. The user will be redirected to the `redirectUri`.
-
 ## License
 
-MIT © [Gardner Bickford](https://github.com/gardner)
+MIT
+
+Based on the works of [Gardner Bickford](https://github.com/gardner).

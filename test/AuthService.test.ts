@@ -1,4 +1,4 @@
-import { AuthService, AuthServiceProps, AuthTokens } from '../src/AuthService';
+import { AuthService, AuthServiceProps, AuthStorage, AuthTokens } from '../src/AuthService';
 import { PKCECodePair } from '../src/pkce';
 import { mock } from 'jest-mock-extended';
 import jwtEncode from 'jwt-encode';
@@ -24,24 +24,6 @@ function decodeFormUrlEncodedBody(body: string): Record<string, string> {
     return obj;
 }
 
-// class TestAuthService extends AuthService {
-//     public async fetchToken(code: string, isRefresh = false): Promise<AuthTokens> {
-//         return super.fetchToken(code, isRefresh);
-//     }
-//
-//     public handleInitialCode(code: string) {
-//         super.handleInitialCode(code);
-//     }
-//
-//     public startRefreshTimer() {
-//         super.startRefreshTimer();
-//     }
-//
-//     public removeCodeFromLocation() {
-//         super.removeCodeFromLocation();
-//     }
-// }
-
 const testAuthTokens: AuthTokens = {
     id_token: 'id_token',
     access_token: 'access_token',
@@ -50,35 +32,49 @@ const testAuthTokens: AuthTokens = {
     token_type: 'token_type'
 };
 
-function newMockStorage(): Storage {
-    const items = new Map<string, string>();
-    return {
-        key(): string | null {
-            throw new Error('Unsupported');
-        },
-        getItem(key: string): string | null {
-            return items.get(key) ?? null;
-        },
-        clear(): void {
-            throw new Error('Unsupported');
-        },
-        removeItem(key: string): void {
-            items.delete(key);
-        },
-        setItem(key: string, value: string): void {
-            items.set(key, value);
-        },
-        length: -1
-    };
-}
-
 function newMockFetchWithEmptyResponse(): jest.Mock {
     const fakeResponse = {
+        ok: true,
         json: (): unknown => ({})
     };
     const mockFetch = jest.fn();
     mockFetch.mockReturnValueOnce(Promise.resolve(fakeResponse));
     return mockFetch;
+}
+
+function newMockStorage(auth?: string | null, pkce?: string | null, preAuthUri?: string | null): AuthStorage {
+    let _auth: string | null = auth ?? null;
+    let _pkce: string | null = pkce ?? null;
+    let _preAuthUri: string | null = preAuthUri ?? null;
+    return {
+        getAuth(): string | null {
+            return _auth;
+        },
+        getPkce(): string | null {
+            return _pkce;
+        },
+        getPreAuthUri(): string | null {
+            return _preAuthUri;
+        },
+        removeAuth(): void {
+            _auth = null;
+        },
+        removePkce(): void {
+            _pkce = null;
+        },
+        removePreAuthUri(): void {
+            _preAuthUri = null;
+        },
+        setAuth(auth: string): void {
+            _auth = auth;
+        },
+        setPkce(pkce: string): void {
+            _pkce = pkce;
+        },
+        setPreAuthUri(preAuthUri: string): void {
+            _preAuthUri = preAuthUri;
+        }
+    };
 }
 
 describe('AuthService', () => {
@@ -89,18 +85,21 @@ describe('AuthService', () => {
 
         let fetchTokenArgs: { code: string; isRefresh: boolean } | undefined;
 
-        await withWindowObjects({ location: mockLocation }, () => {
-            class LocalAuthService extends AuthService {
-                protected async fetchToken(code: string, isRefresh = false): Promise<AuthTokens> {
-                    fetchTokenArgs = {
-                        code,
-                        isRefresh
-                    };
-                    return Promise.resolve(testAuthTokens);
-                }
+        class LocalAuthService extends AuthService {
+            protected async fetchToken(code: string, isRefresh = false): Promise<AuthTokens> {
+                fetchTokenArgs = {
+                    code,
+                    isRefresh
+                };
+                return Promise.resolve(testAuthTokens);
             }
-            new LocalAuthService(props);
-        });
+
+            protected getLocation(): Location {
+                return mockLocation;
+            }
+        }
+
+        new LocalAuthService(props);
 
         expect(fetchTokenArgs).toHaveProperty('code', testCode);
         expect(fetchTokenArgs).toHaveProperty('isRefresh', false);
@@ -112,16 +111,19 @@ describe('AuthService', () => {
 
         let startRefreshTimerCalled = false;
 
-        await withWindowObjects({ location: mockLocation }, () => {
-            class LocalAuthService extends AuthService {
-                protected startRefreshTimer() {
-                    startRefreshTimerCalled = true;
-                }
+        class LocalAuthService extends AuthService {
+            protected startRefreshTimer() {
+                startRefreshTimerCalled = true;
             }
-            new LocalAuthService({
-                ...props,
-                autoRefresh: true
-            });
+
+            protected getLocation(): Location {
+                return mockLocation;
+            }
+        }
+
+        new LocalAuthService({
+            ...props,
+            autoRefresh: true
         });
 
         expect(startRefreshTimerCalled).toBe(true);
@@ -130,17 +132,20 @@ describe('AuthService', () => {
     it('fetchToken should send request body', async () => {
         const mockFetch = newMockFetchWithEmptyResponse();
 
-        const mockStorage = newMockStorage();
-        mockStorage.setItem('pkce', JSON.stringify(stubPKCECodePair));
+        const mockStorage = newMockStorage(null, JSON.stringify(stubPKCECodePair));
 
         class LocalAuthService extends AuthService {
             public async fetchToken(code: string, isRefresh = false): Promise<AuthTokens> {
                 return super.fetchToken(code, isRefresh);
             }
         }
-        const authService = new LocalAuthService(props);
 
-        await withWindowObjects({ fetch: mockFetch, localStorage: mockStorage }, async () => {
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        await withWindowObjects({ fetch: mockFetch }, async () => {
             await authService.fetchToken('authorizationCode');
         });
 
@@ -157,8 +162,7 @@ describe('AuthService', () => {
     it('fetchToken should start timer if autoRefresh enabled', async () => {
         const mockFetch = newMockFetchWithEmptyResponse();
 
-        const mockStorage = newMockStorage();
-        mockStorage.setItem('pkce', JSON.stringify(stubPKCECodePair));
+        const mockStorage = newMockStorage(null, JSON.stringify(stubPKCECodePair));
 
         let called = false;
 
@@ -174,17 +178,18 @@ describe('AuthService', () => {
 
         const authService = new LocalAuthService({
             ...props,
+            storage: mockStorage,
             autoRefresh: true
         });
 
-        await withWindowObjects({ fetch: mockFetch, localStorage: mockStorage }, async () => {
+        await withWindowObjects({ fetch: mockFetch }, async () => {
             await authService.fetchToken('authorizationCode');
         });
 
         expect(called).toBe(true);
     });
 
-    it('should remove code from location', () => {
+    it('removeCodeFromLocation replaces location', () => {
         let replaceArg: URL | string | undefined;
         const mockLocation = mock<Location>();
         mockLocation.href = 'https://example.com/something?a=b&code=123&x=y';
@@ -193,14 +198,21 @@ describe('AuthService', () => {
         });
 
         class LocalAuthService extends AuthService {
+            protected handleInitialCode() {
+                // no initial fetch in this test
+            }
+
             public removeCodeFromLocation(): void {
                 super.removeCodeFromLocation();
             }
+
+            protected getLocation(): Location {
+                return mockLocation;
+            }
         }
+
         const authService = new LocalAuthService(props);
-        withWindowObjects({ location: mockLocation }, () => {
-            authService.removeCodeFromLocation();
-        });
+        authService.removeCodeFromLocation();
 
         expect(mockLocation.replace).toHaveBeenCalledTimes(1);
         expect(replaceArg).toBeTruthy();
@@ -213,6 +225,7 @@ describe('AuthService', () => {
                 return false;
             }
         }
+
         expect(() => new LocalAuthService(props).getIdTokenPayload()).toThrow('Not logged-in');
     });
 
@@ -225,11 +238,12 @@ describe('AuthService', () => {
 
         const mockStorage = newMockStorage();
 
-        expect(() =>
-            withWindowObjects({ localStorage: mockStorage }, () => {
-                new LocalAuthService(props).getIdTokenPayload();
-            })
-        ).toThrow('Auth tokens not found');
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(() => authService.getIdTokenPayload()).toThrow('Auth tokens not found');
     });
 
     it('getIdTokenPayload should throw error if no id token', () => {
@@ -239,25 +253,29 @@ describe('AuthService', () => {
             }
         }
 
-        const mockStorage = newMockStorage();
-        mockStorage.setItem(
-            'auth',
+        const mockStorage = newMockStorage(
             JSON.stringify({
                 ...testAuthTokens,
                 id_token: undefined
             })
         );
 
-        expect(() =>
-            withWindowObjects({ localStorage: mockStorage }, () => {
-                new LocalAuthService(props).getIdTokenPayload();
-            })
-        ).toThrow('No id token');
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(() => authService.getIdTokenPayload()).toThrow('No id token');
     });
 
     it('getIdTokenPayload should return decoded id token', () => {
         const idToken = jwtEncode({ key: 'value' }, 'secret');
+
         class LocalAuthService extends AuthService {
+            isLoggedIn(): boolean {
+                return true;
+            }
+
             getAuthTokens(): AuthTokens {
                 return {
                     ...testAuthTokens,
@@ -265,60 +283,51 @@ describe('AuthService', () => {
                 };
             }
         }
+
         const idTokenPayload = new LocalAuthService(props).getIdTokenPayload();
         expect(idTokenPayload).toHaveProperty('key', 'value');
     });
 
     it('getAuthTokens should throw error if no tokens in storage', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    return null;
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const authService = new AuthService({
+            ...props,
+            storage: newMockStorage()
+        });
 
-        expect(() => new LocalAuthService(props).getAuthTokens()).toThrow('Auth tokens not found');
+        expect(() => authService.getAuthTokens()).toThrow('Auth tokens not found');
     });
 
     it('getAuthTokens should return parsed tokens', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    return JSON.stringify(testAuthTokens);
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const mockStorage = newMockStorage(JSON.stringify(testAuthTokens));
 
-        expect(new LocalAuthService(props).getAuthTokens()).toEqual(testAuthTokens);
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.getAuthTokens()).toEqual(testAuthTokens);
     });
 
     it('isPending should return true if pkce and not logged in', () => {
-        class LocalAuthService extends AuthService {
-            isLoggedIn(): boolean {
-                return false;
-            }
+        const mockStorage = newMockStorage(null, 'something-pkce');
 
-            protected haveItem(key: string): boolean {
-                return key === 'pkce';
-            }
-        }
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
 
-        expect(new LocalAuthService(props).isPending()).toBe(true);
+        expect(authService.isPending()).toBe(true);
     });
 
     it('isPending should return false if no pkce', () => {
-        class LocalAuthService extends AuthService {
-            protected haveItem(): boolean {
-                return false;
-            }
-        }
+        const mockStorage = newMockStorage();
 
-        expect(new LocalAuthService(props).isPending()).toBe(false);
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isPending()).toBe(false);
     });
 
     it('isPending should return false if pkce but logged in', () => {
@@ -326,97 +335,98 @@ describe('AuthService', () => {
             isLoggedIn(): boolean {
                 return true;
             }
-
-            protected haveItem(key: string): boolean {
-                return key === 'pkce';
-            }
         }
 
-        expect(new LocalAuthService(props).isPending()).toBe(false);
+        const mockStorage = newMockStorage();
+
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isPending()).toBe(false);
     });
 
     it('isLoggedIn should return false if no auth', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    return null;
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const mockStorage = newMockStorage();
 
-        expect(new LocalAuthService(props).isLoggedIn()).toBe(false);
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isLoggedIn()).toBe(false);
     });
 
     it('isLoggedIn should return false if expired', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    const expiredTokens: AuthTokens = {
-                        ...testAuthTokens,
-                        expires_at: Date.now() - 1000
-                    };
-                    return JSON.stringify(expiredTokens);
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const expiredTokens: AuthTokens = {
+            ...testAuthTokens,
+            expires_at: Date.now() - 1000
+        };
 
-        expect(new LocalAuthService(props).isLoggedIn()).toBe(false);
+        const mockStorage = newMockStorage(JSON.stringify(expiredTokens));
+
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isLoggedIn()).toBe(false);
     });
 
     it('isLoggedIn should return true if not expired', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    const expiredTokens: AuthTokens = {
-                        ...testAuthTokens,
-                        expires_at: Date.now() + 1000
-                    };
-                    return JSON.stringify(expiredTokens);
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const unexpiredTokens: AuthTokens = {
+            ...testAuthTokens,
+            expires_at: Date.now() + 1000
+        };
 
-        expect(new LocalAuthService(props).isLoggedIn()).toBe(true);
+        const mockStorage = newMockStorage(JSON.stringify(unexpiredTokens));
+
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isLoggedIn()).toBe(true);
     });
 
     it('isLoggedIn should return true if never expires', () => {
-        class LocalAuthService extends AuthService {
-            protected getItem(key: string): string | null {
-                if (key === 'auth') {
-                    const expiredTokens: AuthTokens = {
-                        ...testAuthTokens,
-                        expires_at: undefined
-                    };
-                    return JSON.stringify(expiredTokens);
-                } else {
-                    throw new Error('Unexpected method call');
-                }
-            }
-        }
+        const neverExpiringTokens: AuthTokens = {
+            ...testAuthTokens,
+            expires_at: undefined
+        };
 
-        expect(new LocalAuthService(props).isLoggedIn()).toBe(true);
+        const mockStorage = newMockStorage(JSON.stringify(neverExpiringTokens));
+
+        const authService = new AuthService({
+            ...props,
+            storage: mockStorage
+        });
+
+        expect(authService.isLoggedIn()).toBe(true);
     });
 
     it('logout cleans local storage', async () => {
-        const mockStorage = newMockStorage();
-        mockStorage.setItem('pkce', 'something');
-        mockStorage.setItem('auth', 'something else');
+        const mockStorage = newMockStorage('something', 'something else');
 
         const mockLocation = mock<Location>();
         mockLocation.href = 'https://example.com';
 
-        await withWindowObjects({ localStorage: mockStorage, location: mockLocation }, () => {
-            return new AuthService(props).logout();
+        class LocalAuthService extends AuthService {
+            protected getLocation(): Location {
+                return mockLocation;
+            }
+        }
+
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
         });
 
-        expect(mockStorage.getItem('pkce')).toBeNull();
-        expect(mockStorage.getItem('auth')).toBeNull();
+        await authService.logout();
+
+        expect(mockStorage.getPkce()).toBeNull();
+        expect(mockStorage.getAuth()).toBeNull();
     });
 
     it('logout reloads page', async () => {
@@ -425,9 +435,18 @@ describe('AuthService', () => {
         const mockLocation = mock<Location>();
         mockLocation.href = 'https://example.com';
 
-        await withWindowObjects({ localStorage: mockStorage, location: mockLocation }, () => {
-            return new AuthService(props).logout();
+        class LocalAuthService extends AuthService {
+            protected getLocation(): Location {
+                return mockLocation;
+            }
+        }
+
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
         });
+
+        await authService.logout();
 
         expect(mockLocation.reload).toBeCalled();
     });
@@ -438,15 +457,25 @@ describe('AuthService', () => {
         const mockLocation = mock<Location>();
         mockLocation.href = 'https://example.com';
 
-        await withWindowObjects({ localStorage: mockStorage, location: mockLocation }, () => {
-            return new AuthService(props).logout(true);
+        class LocalAuthService extends AuthService {
+            protected getLocation(): Location {
+                return mockLocation;
+            }
+        }
+
+        const authService = new LocalAuthService({
+            ...props,
+            storage: mockStorage
         });
+
+        await authService.logout(true);
 
         expect(mockLocation.replace).toBeCalled();
     });
 
     it('login calls authorize', async () => {
         let called = false;
+
         class TestAuthService extends AuthService {
             protected async authorize(): Promise<void> {
                 called = true;
@@ -460,8 +489,7 @@ describe('AuthService', () => {
     });
 
     it('authorize initializes storage', async () => {
-        const mockStorage = newMockStorage();
-        mockStorage.setItem('auth', 'something');
+        const mockStorage = newMockStorage('something');
 
         const mockLocation = mock<Location>();
         mockLocation.href = 'https://example.com/before_auth';
@@ -480,15 +508,22 @@ describe('AuthService', () => {
             protected async createPKCECodes(): Promise<PKCECodePair> {
                 return pkceCodes;
             }
+
+            protected getLocation(): Location {
+                return mockLocation;
+            }
         }
 
-        await withWindowObjects({ localStorage: mockStorage, location: mockLocation }, () => {
-            return new TestAuthService(props).authorize();
+        const authService = new TestAuthService({
+            ...props,
+            storage: mockStorage
         });
 
-        expect(mockStorage.getItem('auth')).toBeNull();
-        expect(mockStorage.getItem('pkce')).toBe(JSON.stringify(pkceCodes));
-        expect(mockStorage.getItem('preAuthUri')).toBe('https://example.com/before_auth');
+        await authService.authorize();
+
+        expect(mockStorage.getAuth()).toBeNull();
+        expect(mockStorage.getPkce()).toBe(JSON.stringify(pkceCodes));
+        expect(mockStorage.getPreAuthUri()).toBe('https://example.com/before_auth');
     });
 });
 

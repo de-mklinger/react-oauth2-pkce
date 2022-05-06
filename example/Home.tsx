@@ -32,9 +32,9 @@ export default function Home() {
     return (
         <div>
             <p>Logged in!</p>
-            <code>
-                {JSON.stringify(authService.getIdTokenPayload())}
-            </code>
+            <pre>
+                {JSON.stringify(authService.getIdTokenPayload(), null, "  ")}
+            </pre>
             <button onClick={logout}>Logout</button>
         </div>
     );

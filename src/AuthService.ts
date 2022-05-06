@@ -15,17 +15,18 @@ export interface AuthServiceProps {
     prompts?: string[];
     autoRefresh?: boolean;
     refreshBeforeExpirationSeconds?: number;
-    localStoragePrefix?: string;
+    storage?: AuthStorage;
     debug?: boolean;
 }
 
 export interface AuthTokens {
     id_token: string;
-    access_token: string; // TODO shouldn't this be optional?
-    refresh_token: string; // TODO shouldn't this be optional?
+    access_token?: string;
+    refresh_token?: string;
     expires_in: number; // seconds
     expires_at?: number; // calculated on login, in millis
     token_type: string;
+    scope?: string;
 }
 
 export interface TokenRequestBody {
@@ -58,12 +59,103 @@ export interface IdTokenPayload {
     [propName: string]: unknown;
 }
 
+export type debugFn = (...args: unknown[]) => void;
+
+export interface AuthStorage {
+    removeAuth(): void;
+
+    getAuth(): string | null;
+
+    setAuth(auth: string): void;
+
+    removePkce(): void;
+
+    getPkce(): string | null;
+
+    setPkce(pkce: string): void;
+
+    removePreAuthUri(): void;
+
+    getPreAuthUri(): string | null;
+
+    setPreAuthUri(preAuthUri: string): void;
+}
+
+export class AuthLocalStorage implements AuthStorage {
+    private readonly prefix: string;
+    private readonly debug: debugFn;
+
+    constructor(prefix?: string, debug?: debugFn) {
+        this.prefix = prefix ?? '';
+        this.debug = debug ?? (() => {});
+    }
+
+    protected getItem(key: string): string | null {
+        const fullKey = this.getFullItemKey(key);
+        return window.localStorage.getItem(fullKey);
+    }
+
+    protected removeItem(key: string): void {
+        const fullKey = this.getFullItemKey(key);
+        this.debug('Remove storage item:', key);
+        window.localStorage.removeItem(fullKey);
+    }
+
+    protected setItem(key: string, value: string): void {
+        const fullKey = this.getFullItemKey(key);
+        this.debug('Set storage item:', fullKey);
+        window.localStorage.setItem(fullKey, value);
+    }
+
+    protected getFullItemKey(key: string): string {
+        return this.prefix + key;
+    }
+
+    removeAuth(): void {
+        this.removeItem('auth');
+    }
+
+    getAuth(): string | null {
+        return this.getItem('auth');
+    }
+
+    setAuth(auth: string): void {
+        this.setItem('auth', auth);
+    }
+
+    removePkce(): void {
+        this.removeItem('pkce');
+    }
+
+    getPkce(): string | null {
+        return this.getItem('pkce');
+    }
+
+    setPkce(pkce: string): void {
+        this.setItem('pkce', pkce);
+    }
+
+    removePreAuthUri(): void {
+        this.removeItem('preAuthUri');
+    }
+
+    getPreAuthUri(): string | null {
+        return this.getItem('preAuthUri');
+    }
+
+    setPreAuthUri(preAuthUri: string): void {
+        this.setItem('preAuthUri', preAuthUri);
+    }
+}
+
 export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     private readonly props: AuthServiceProps;
+    private readonly storage: AuthStorage;
     private timeout?: number;
 
     constructor(props: AuthServiceProps) {
         this.props = props;
+        this.storage = props.storage ?? this.newDefaultStorage();
         const code = this.getCodeFromLocation();
         if (code !== null) {
             this.debug('Found code in location:', code);
@@ -74,15 +166,21 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         }
     }
 
+    private newDefaultStorage() {
+        return new AuthLocalStorage(undefined, (...args) => {
+            this.debug(...args);
+        });
+    }
+
     protected handleInitialCode(code: string): void {
         this.fetchToken(code)
             .then(() => {
                 this.restoreUri();
             })
             .catch(e => {
-                console.warn('Error fetching token for refresh', e);
-                this.removeItem('pkce');
-                this.removeItem('auth');
+                console.warn('Error fetching initial token:', e);
+                this.storage.removePkce();
+                this.storage.removeAuth();
                 this.removeCodeFromLocation();
             });
     }
@@ -114,8 +212,8 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         }
     }
 
-    getPkce(): PKCECodePair {
-        const pkce = this.getItem('pkce');
+    protected getPkce(): PKCECodePair {
+        const pkce = this.storage.getPkce();
         if (null === pkce) {
             throw new Error('PKCE pair not found in local storage');
         } else {
@@ -123,8 +221,8 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         }
     }
 
-    setAuthTokens(auth: AuthTokens): void {
-        this.setItem('auth', JSON.stringify(auth));
+    private setAuthTokens(auth: AuthTokens): void {
+        this.storage.setAuth(JSON.stringify(auth));
     }
 
     getAuthTokens(): AuthTokens {
@@ -137,7 +235,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
 
     private getOptionalAuthTokens(): AuthTokens | undefined {
-        const auth = this.getItem('auth');
+        const auth = this.storage.getAuth();
         if (auth) {
             return JSON.parse(auth);
         } else {
@@ -146,7 +244,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
 
     isPending(): boolean {
-        return this.haveItem('pkce') && !this.isLoggedIn();
+        return this.storage.getPkce() !== null && !this.isLoggedIn();
     }
 
     isLoggedIn(): boolean {
@@ -162,8 +260,8 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
 
     async logout(shouldEndSession = false): Promise<void> {
-        this.removeItem('pkce');
-        this.removeItem('auth');
+        this.storage.removePkce();
+        this.storage.removeAuth();
         if (shouldEndSession) {
             this.debug('logout: location-replace');
             this.getLocation().replace(this.newLogoutUrl().toString());
@@ -190,9 +288,9 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     // this will do a full page reload to the OAuth2 provider's login page
     protected async authorize(): Promise<void> {
         const pkce = await this.createPKCECodes();
-        this.setItem('pkce', JSON.stringify(pkce));
-        this.setItem('preAuthUri', this.getLocation().href);
-        this.removeItem('auth');
+        this.storage.setPkce(JSON.stringify(pkce));
+        this.storage.setPreAuthUri(this.getLocation().href);
+        this.storage.removeAuth();
         const codeChallenge = pkce.codeChallenge;
 
         this.debug('authorize: location-replace');
@@ -258,17 +356,20 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
             },
             method: 'POST',
             body: toUrlEncoded({ ...payload })
+        }).finally(() => {
+            this.storage.removePkce();
         });
 
-        // TODO handle fetch error
+        if (!response.ok) {
+            throw new Error(`Error response when trying to fetch token: ${response.status}`);
+        }
 
-        this.removeItem('pkce');
         const newAuthTokens: AuthTokens = await response.json();
         if (isRefresh && !newAuthTokens.refresh_token && refreshToken) {
             newAuthTokens.refresh_token = refreshToken;
         }
         newAuthTokens.expires_at = Date.now() + newAuthTokens.expires_in * 1000;
-        this.debug('New token expires at:', newAuthTokens.expires_at);
+        this.debugTokenExpiration(newAuthTokens);
         this.setAuthTokens(newAuthTokens);
 
         if (this.props.autoRefresh) {
@@ -292,56 +393,87 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         if (!authTokens) {
             return;
         }
+
         const { refresh_token: refreshToken, expires_at: expiresAt } = authTokens;
-        if (!expiresAt || !refreshToken) {
+        if (!refreshToken) {
+            this.debug('No refresh token available, disabling auto-refresh');
+            return;
+        }
+        if (!expiresAt) {
+            this.debug('No token expiration date, disabling auto-refresh');
             return;
         }
 
         let timeoutMillis = expiresAt - Date.now();
         if (timeoutMillis <= 0) {
-            // TODO refresh token may have a much longer TTL than id token
-            this.debug('Not starting refresh timer, token is expired');
-            this.handleExpired();
-        } else {
-            this.debug('Starting refresh timer');
-            timeoutMillis = this.applyRefreshBeforeExpirationTime(timeoutMillis);
-            this.logTimer(timeoutMillis, expiresAt);
-
-            this.timeout = window.setTimeout(() => {
-                this.debug('Refresh timer execution');
-                this.fetchToken(refreshToken, true).catch(e => {
-                    console.warn('Error fetching token for refresh', e);
-                    this.removeItem('auth');
-                    this.removeCodeFromLocation();
-                });
-            }, timeoutMillis);
+            // refresh token may have a much longer TTL than id token
+            // try to refresh, even if token is already expired
+            this.debug('Token is expired, still trying refresh');
         }
+
+        this.debug('Starting refresh timer');
+        timeoutMillis = this.applyRefreshBeforeExpirationTime(timeoutMillis);
+        // throttle timeout:
+        timeoutMillis = Math.max(1000, timeoutMillis);
+        this.debugTimer(timeoutMillis, expiresAt);
+
+        this.timeout = window.setTimeout(() => {
+            this.debug('Refresh timer execution');
+            this.fetchToken(refreshToken, true).catch(e => {
+                console.warn('Error fetching token for refresh:', e);
+                this.storage.removeAuth();
+                this.removeCodeFromLocation();
+            });
+        }, timeoutMillis);
     }
 
     private applyRefreshBeforeExpirationTime(timeoutMillis: number): number {
         const { refreshBeforeExpirationSeconds } = this.props;
         if (refreshBeforeExpirationSeconds && timeoutMillis > refreshBeforeExpirationSeconds) {
-            return timeoutMillis - refreshBeforeExpirationSeconds;
+            return timeoutMillis - refreshBeforeExpirationSeconds * 1000;
         }
         return timeoutMillis;
     }
 
-    private logTimer(timeoutMillis: number, expiresAt: number): void {
+    private debugTokenExpiration(newAuthTokens: AuthTokens) {
         if (this.props.debug) {
-            const refreshDate = new Date(Date.now() + timeoutMillis);
-            const expirationDate = new Date(expiresAt);
+            if (newAuthTokens.expires_at) {
+                this.debug('Token expires at:', this.formatDebugDate(new Date(newAuthTokens.expires_at)));
+            } else {
+                this.debug('Token never expires (or no expiration information provided)');
+            }
+        }
+    }
+
+    private debugTimer(timeoutMillis: number, expiresAt: number): void {
+        if (this.props.debug) {
+            const refreshDate = this.formatDebugDate(new Date(Date.now() + timeoutMillis));
+            const expirationDate = this.formatDebugDate(new Date(expiresAt));
             this.debug(`Setting timer to refresh at ${refreshDate}, expiration at ${expirationDate}`);
         }
     }
 
+    private formatDebugDate(date: Date): string {
+        if (Intl && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(undefined, {
+                // @ts-ignore see https://github.com/microsoft/TypeScript/issues/35865
+                dateStyle: 'medium',
+                // @ts-ignore see https://github.com/microsoft/TypeScript/issues/35865
+                timeStyle: 'medium'
+            }).format(date);
+        } else {
+            return date.toString();
+        }
+    }
+
     private handleExpired(): void {
-        this.removeItem('auth');
+        this.storage.removeAuth();
         this.removeCodeFromLocation();
     }
 
-    restoreUri(): void {
-        const uri = this.getItem('preAuthUri');
-        this.removeItem('preAuthUri');
+    private restoreUri(): void {
+        const uri = this.storage.getPreAuthUri();
+        this.storage.removePreAuthUri();
         if (uri !== null) {
             const location = this.getLocation();
             this.debug('restoreUri: location-replace');
@@ -353,32 +485,6 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     // For better testability:
     protected getLocation(): Location {
         return window.location;
-    }
-
-    protected getItem(key: string): string | null {
-        const fullKey = this.getFullItemKey(key);
-        return window.localStorage.getItem(fullKey);
-    }
-
-    protected haveItem(key: string): boolean {
-        return this.getItem(key) !== null;
-    }
-
-    protected removeItem(key: string): void {
-        const fullKey = this.getFullItemKey(key);
-        this.debug('Remove storage item:', key);
-        window.localStorage.removeItem(fullKey);
-    }
-
-    protected setItem(key: string, value: string): void {
-        const { localStoragePrefix = '' } = this.props;
-        this.debug('Set storage item:', key);
-        window.localStorage.setItem(localStoragePrefix + key, value);
-    }
-
-    private getFullItemKey(key: string): string {
-        const { localStoragePrefix = '' } = this.props;
-        return localStoragePrefix + key;
     }
 
     private debug(...args: unknown[]): void {
