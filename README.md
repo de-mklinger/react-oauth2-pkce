@@ -7,7 +7,7 @@ Authenticate against generic OAuth2 using PKCE.
 ## Install
 
 ```bash
-npm install --save react-oauth2-pkce
+npm install --save @de-mklinger/react-oauth2-pkce
 ```
 
 ## Usage
