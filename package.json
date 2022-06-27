@@ -13,7 +13,7 @@
     "gatsby"
   ],
   "main": "dist/index.js",
-  "module": "dist/mylib-tsdx.esm.js",
+  "module": "dist/react-oauth2-pkce.esm.js",
   "typings": "dist/index.d.ts",
   "files": [
     "dist"
