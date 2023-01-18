@@ -3,6 +3,9 @@
   "version": "4.0.1",
   "description": "Authenticate against generic OAuth2 using PKCE",
   "author": "Gardner Bickford <gardner@bickford.nz>",
+  "contributors": [
+    "Marc Klinger <mklinger@mklinger.de>"
+  ],
   "license": "MIT",
   "repository": "de-mklinger/react-oauth2-pkce",
   "keywords": [
