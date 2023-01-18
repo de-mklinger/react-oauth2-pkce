@@ -42,6 +42,7 @@
     "@types/react-dom": "^18.0.10",
     "jest-mock-extended": "^3.0.1",
     "jwt-encode": "^1.0.1",
+    "prettier": "^2.8.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdx": "^0.14.1",
@@ -51,12 +52,5 @@
   "dependencies": {
     "base64-arraybuffer": "^1.0.2",
     "jwt-decode": "^3.1.2"
-  },
-  "prettier": {
-    "semi": true,
-    "trailingComma": "none",
-    "singleQuote": true,
-    "printWidth": 120,
-    "tabWidth": 4
   }
 }
