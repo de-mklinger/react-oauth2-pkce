@@ -1,8 +1,11 @@
-import { createPKCECodes, PKCECodePair } from "./pkce";
-import { toUrlEncoded } from "./util";
 import jwtDecode from "jwt-decode";
+import { createPkceCodes, isPkceCodePair, type PKCECodePair } from "./pkce";
+import { toUrlEncoded } from "./util";
 
-export interface AuthServiceProps {
+/* eslint-disable @typescript-eslint/ban-types */
+/* eslint-disable @typescript-eslint/naming-convention */
+
+export type AuthServiceProps = {
   clientId: string;
   clientSecret?: string;
   provider: string;
@@ -17,37 +20,56 @@ export interface AuthServiceProps {
   refreshBeforeExpirationSeconds?: number;
   storage?: AuthStorage;
   debug?: boolean;
-}
+};
 
-export interface AuthTokens {
+export type AuthTokens = {
   id_token: string;
   access_token?: string;
   refresh_token?: string;
-  expires_in: number; // seconds
-  expires_at?: number; // calculated on login, in millis
-  token_type: string;
+  expires_in: number; // Seconds
+  expires_at?: number; // Calculated on login, in millis
+  token_type?: string;
   scope?: string;
+};
+
+export function isAuthTokens(o: unknown): o is AuthTokens {
+  if (!o || typeof o !== "object" || Array.isArray(o)) {
+    return false;
+  }
+
+  const oo = o as Record<keyof AuthTokens, unknown>;
+
+  return (
+    typeof oo.id_token === "string" &&
+    (oo.access_token === undefined || typeof oo.access_token === "string") &&
+    (oo.refresh_token === undefined || typeof oo.refresh_token === "string") &&
+    typeof oo.expires_in === "number" &&
+    (oo.expires_at === undefined || typeof oo.expires_at === "number") &&
+    (oo.token_type === undefined || typeof oo.token_type === "string") &&
+    (oo.scope === undefined || typeof oo.scope === "string")
+  );
 }
 
-export interface TokenRequestBody {
+export type TokenRequestBody = {
   client_id: string;
   redirect_uri: string | undefined;
   client_secret: string | undefined;
   grant_type: string;
-}
+};
 
-export interface AuthorizationCodeRequestBody extends TokenRequestBody {
+export type AuthorizationCodeRequestBody = {
   grant_type: "authorization_code";
   code: string;
   code_verifier: string;
-}
+} & TokenRequestBody;
 
-export interface RefreshTokenRequestBody extends TokenRequestBody {
+export type RefreshTokenRequestBody = {
   grant_type: "refresh_token";
   refresh_token: string;
-}
+} & TokenRequestBody;
 
-export interface IdTokenPayload {
+export type IdTokenPayload = {
+  [propName: string]: unknown;
   iss?: string;
   sub?: string;
   aud?: string | string[];
@@ -55,13 +77,11 @@ export interface IdTokenPayload {
   nbf?: number;
   exp?: number;
   iat?: number;
+};
 
-  [propName: string]: unknown;
-}
+export type DebugFn = (...args: unknown[]) => void;
 
-export type debugFn = (...args: unknown[]) => void;
-
-export interface AuthStorage {
+export type AuthStorage = {
   removeAuth(): void;
 
   getAuth(): string | null;
@@ -79,36 +99,19 @@ export interface AuthStorage {
   getPreAuthUri(): string | null;
 
   setPreAuthUri(preAuthUri: string): void;
-}
+};
 
 export class AuthLocalStorage implements AuthStorage {
   private readonly prefix: string;
-  private readonly debug: debugFn;
+  private readonly debug: DebugFn;
 
-  constructor(prefix?: string, debug?: debugFn) {
+  constructor(prefix?: string, debug?: DebugFn) {
     this.prefix = prefix ?? "";
-    this.debug = debug ?? (() => {});
-  }
-
-  protected getItem(key: string): string | null {
-    const fullKey = this.getFullItemKey(key);
-    return window.localStorage.getItem(fullKey);
-  }
-
-  protected removeItem(key: string): void {
-    const fullKey = this.getFullItemKey(key);
-    this.debug("Remove storage item:", key);
-    window.localStorage.removeItem(fullKey);
-  }
-
-  protected setItem(key: string, value: string): void {
-    const fullKey = this.getFullItemKey(key);
-    this.debug("Set storage item:", fullKey);
-    window.localStorage.setItem(fullKey, value);
-  }
-
-  protected getFullItemKey(key: string): string {
-    return this.prefix + key;
+    this.debug =
+      debug ??
+      (() => {
+        // Do nothing
+      });
   }
 
   removeAuth(): void {
@@ -146,30 +149,98 @@ export class AuthLocalStorage implements AuthStorage {
   setPreAuthUri(preAuthUri: string): void {
     this.setItem("preAuthUri", preAuthUri);
   }
+
+  protected getItem(key: string): string | null {
+    const fullKey = this.getFullItemKey(key);
+    return window.localStorage.getItem(fullKey);
+  }
+
+  protected removeItem(key: string): void {
+    const fullKey = this.getFullItemKey(key);
+    this.debug("Remove storage item:", key);
+    window.localStorage.removeItem(fullKey);
+  }
+
+  protected setItem(key: string, value: string): void {
+    const fullKey = this.getFullItemKey(key);
+    this.debug("Set storage item:", fullKey);
+    window.localStorage.setItem(fullKey, value);
+  }
+
+  protected getFullItemKey(key: string): string {
+    return this.prefix + key;
+  }
 }
 
 export class AuthService<IdTokenPayloadType = IdTokenPayload> {
-  private readonly props: AuthServiceProps;
   private readonly storage: AuthStorage;
   private timeout?: number;
 
-  constructor(props: AuthServiceProps) {
-    this.props = props;
+  constructor(private readonly props: AuthServiceProps) {
     this.storage = props.storage ?? this.newDefaultStorage();
     const code = this.getCodeFromLocation();
     if (code !== null) {
       this.debug("Found code in location:", code);
       this.handleInitialCode(code);
-    } else if (this.props.autoRefresh) {
-      // maybe after page reload with valid token:
+    } else if (props.autoRefresh) {
+      // Maybe after page reload with valid token:
       this.startRefreshTimer();
     }
   }
 
-  private newDefaultStorage() {
-    return new AuthLocalStorage(undefined, (...args) => {
-      this.debug(...args);
-    });
+  getIdTokenPayload(): IdTokenPayloadType {
+    if (!this.isLoggedIn()) {
+      throw new Error("Not logged-in");
+    }
+
+    const authTokens = this.getAuthTokens();
+
+    return jwtDecode(authTokens.id_token);
+  }
+
+  getAuthTokens(): AuthTokens {
+    const authTokens = this.getOptionalAuthTokens();
+
+    if (authTokens) {
+      return authTokens;
+    }
+
+    throw new Error("Auth tokens not found in local storage");
+  }
+
+  isPending(): boolean {
+    return this.storage.getPkce() !== null && !this.isLoggedIn();
+  }
+
+  isLoggedIn(): boolean {
+    const authTokens = this.getOptionalAuthTokens();
+
+    if (!authTokens) {
+      return false;
+    }
+
+    if (authTokens.expires_at && Date.now() >= authTokens.expires_at) {
+      this.handleExpired();
+      return false;
+    }
+
+    return true;
+  }
+
+  async logout(shouldEndSession = false): Promise<void> {
+    this.storage.removePkce();
+    this.storage.removeAuth();
+    if (shouldEndSession) {
+      this.debug("logout: location-replace");
+      this.getLocation().replace(this.newLogoutUrl().toString());
+    } else {
+      this.debug("logout: location-reload");
+      this.getLocation().reload();
+    }
+  }
+
+  async login(): Promise<void> {
+    return this.authorize();
   }
 
   protected handleInitialCode(code: string): void {
@@ -200,131 +271,40 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
   }
 
-  getIdTokenPayload(): IdTokenPayloadType {
-    if (!this.isLoggedIn()) {
-      throw new Error("Not logged-in");
-    }
-    const authTokens = this.getAuthTokens();
-    if (!authTokens.id_token) {
-      throw new Error("No id token");
-    } else {
-      return jwtDecode(authTokens.id_token);
-    }
-  }
-
   protected getPkce(): PKCECodePair {
     const pkce = this.storage.getPkce();
-    if (null === pkce) {
-      throw new Error("PKCE pair not found in local storage");
-    } else {
-      return JSON.parse(pkce);
+
+    if (pkce === null) {
+      throw new Error("PKCE pair not found in storage");
     }
-  }
 
-  private setAuthTokens(auth: AuthTokens): void {
-    this.storage.setAuth(JSON.stringify(auth));
-  }
+    const pkceCodePair: unknown = JSON.parse(pkce);
 
-  getAuthTokens(): AuthTokens {
-    const authTokens = this.getOptionalAuthTokens();
-    if (!authTokens) {
-      throw new Error("Auth tokens not found in local storage");
-    } else {
-      return authTokens;
+    if (!isPkceCodePair(pkceCodePair)) {
+      throw new Error("Illegal PKCE pair in storage");
     }
+
+    return pkceCodePair;
   }
 
-  private getOptionalAuthTokens(): AuthTokens | undefined {
-    const auth = this.storage.getAuth();
-    if (auth) {
-      return JSON.parse(auth);
-    } else {
-      return undefined;
-    }
-  }
-
-  isPending(): boolean {
-    return this.storage.getPkce() !== null && !this.isLoggedIn();
-  }
-
-  isLoggedIn(): boolean {
-    const authTokens = this.getOptionalAuthTokens();
-    if (!authTokens) {
-      return false;
-    }
-    if (authTokens.expires_at && Date.now() >= authTokens.expires_at) {
-      this.handleExpired();
-      return false;
-    }
-    return true;
-  }
-
-  async logout(shouldEndSession = false): Promise<void> {
-    this.storage.removePkce();
-    this.storage.removeAuth();
-    if (shouldEndSession) {
-      this.debug("logout: location-replace");
-      this.getLocation().replace(this.newLogoutUrl().toString());
-    } else {
-      this.debug("logout: location-reload");
-      this.getLocation().reload();
-    }
-  }
-
-  private newLogoutUrl(): URL {
-    const { clientId, provider, logoutEndpoint, redirectUri } = this.props;
-    const logoutUrl = new URL(logoutEndpoint || `${provider}/logout`);
-    logoutUrl.searchParams.set("client_id", clientId);
-    if (redirectUri) {
-      logoutUrl.searchParams.set("post_logout_redirect_uri", redirectUri);
-    }
-    return logoutUrl;
-  }
-
-  async login(): Promise<void> {
-    return this.authorize();
-  }
-
-  // this will do a full page reload to the OAuth2 provider's login page
+  // This will do a full page reload to the OAuth2 provider's login page
   protected async authorize(): Promise<void> {
     const pkce = await this.createPKCECodes();
     this.storage.setPkce(JSON.stringify(pkce));
     this.storage.setPreAuthUri(this.getLocation().href);
     this.storage.removeAuth();
-    const codeChallenge = pkce.codeChallenge;
+
+    const { codeChallenge } = pkce;
 
     this.debug("authorize: location-replace");
     this.getLocation().replace(this.newAuthorizeUrl(codeChallenge).toString());
   }
 
   protected async createPKCECodes(): Promise<PKCECodePair> {
-    return createPKCECodes();
+    return createPkceCodes();
   }
 
-  private newAuthorizeUrl(codeChallenge: string): URL {
-    const authorizeUrl = new URL(
-      this.props.authorizeEndpoint || `${this.props.provider}/authorize`
-    );
-
-    authorizeUrl.searchParams.set("client_id", this.props.clientId);
-    authorizeUrl.searchParams.set("scope", this.props.scopes.join(" "));
-    authorizeUrl.searchParams.set("response_type", "code");
-    authorizeUrl.searchParams.set("code_challenge", codeChallenge);
-    authorizeUrl.searchParams.set("code_challenge_method", "S256");
-    if (this.props.audience) {
-      authorizeUrl.searchParams.set("audience", this.props.audience);
-    }
-    if (this.props.prompts) {
-      authorizeUrl.searchParams.set("prompt", this.props.prompts.join(" "));
-    }
-    if (this.props.redirectUri) {
-      authorizeUrl.searchParams.set("redirect_uri", this.props.redirectUri);
-    }
-
-    return authorizeUrl;
-  }
-
-  // this happens after a full page reload. Read the code from localstorage
+  // This happens after a full page reload. Read the code from localstorage
   protected async fetchToken(
     code: string,
     isRefresh = false
@@ -344,7 +324,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
       };
     } else {
       const pkce: PKCECodePair = this.getPkce();
-      const codeVerifier = pkce.codeVerifier;
+      const { codeVerifier } = pkce;
       payload = {
         grant_type: "authorization_code",
         client_id: this.props.clientId,
@@ -371,10 +351,16 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
       );
     }
 
-    const newAuthTokens: AuthTokens = await response.json();
+    const newAuthTokens: unknown = await response.json();
+
+    if (!isAuthTokens(newAuthTokens)) {
+      throw new Error("Illegal auth tokens response");
+    }
+
     if (isRefresh && !newAuthTokens.refresh_token && refreshToken) {
       newAuthTokens.refresh_token = refreshToken;
     }
+
     newAuthTokens.expires_at = Date.now() + newAuthTokens.expires_in * 1000;
     this.debugTokenExpiration(newAuthTokens);
     this.setAuthTokens(newAuthTokens);
@@ -384,11 +370,6 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
 
     return this.getAuthTokens();
-  }
-
-  private newTokenUrl(): URL {
-    const { provider, tokenEndpoint } = this.props;
-    return new URL(`${tokenEndpoint || `${provider}/token`}`);
   }
 
   protected startRefreshTimer(): void {
@@ -402,10 +383,12 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
 
     const { refresh_token: refreshToken, expires_at: expiresAt } = authTokens;
+
     if (!refreshToken) {
       this.debug("No refresh token available, disabling auto-refresh");
       return;
     }
+
     if (!expiresAt) {
       this.debug("No token expiration date, disabling auto-refresh");
       return;
@@ -413,14 +396,14 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
 
     let timeoutMillis = expiresAt - Date.now();
     if (timeoutMillis <= 0) {
-      // refresh token may have a much longer TTL than id token
-      // try to refresh, even if token is already expired
+      // Refresh token may have a much longer TTL than id token
+      // Try to refresh, even if token is already expired
       this.debug("Token is expired, still trying refresh");
     }
 
     this.debug("Starting refresh timer");
     timeoutMillis = this.applyRefreshBeforeExpirationTime(timeoutMillis);
-    // throttle timeout:
+    // Throttle timeout:
     timeoutMillis = Math.max(1000, timeoutMillis);
     this.debugTimer(timeoutMillis, expiresAt);
 
@@ -434,14 +417,90 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }, timeoutMillis);
   }
 
+  // For better testability:
+  protected getLocation(): Location {
+    return window.location;
+  }
+
+  private newDefaultStorage() {
+    return new AuthLocalStorage(undefined, (...args) => {
+      this.debug(...args);
+    });
+  }
+
+  private setAuthTokens(auth: AuthTokens): void {
+    this.storage.setAuth(JSON.stringify(auth));
+  }
+
+  private getOptionalAuthTokens(): AuthTokens | undefined {
+    const auth = this.storage.getAuth();
+
+    if (auth) {
+      const authTokens: unknown = JSON.parse(auth);
+
+      if (!isAuthTokens(authTokens)) {
+        throw new Error("Illegal auth tokens in storage");
+      }
+
+      return authTokens;
+    }
+
+    return undefined;
+  }
+
+  private newLogoutUrl(): URL {
+    const { clientId, provider, logoutEndpoint, redirectUri } = this.props;
+
+    const logoutUrl = new URL(logoutEndpoint ?? `${provider}/logout`);
+    logoutUrl.searchParams.set("client_id", clientId);
+    if (redirectUri) {
+      logoutUrl.searchParams.set("post_logout_redirect_uri", redirectUri);
+    }
+
+    return logoutUrl;
+  }
+
+  private newAuthorizeUrl(codeChallenge: string): URL {
+    const authorizeUrl = new URL(
+      this.props.authorizeEndpoint ?? `${this.props.provider}/authorize`
+    );
+
+    authorizeUrl.searchParams.set("client_id", this.props.clientId);
+    authorizeUrl.searchParams.set("scope", this.props.scopes.join(" "));
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("code_challenge", codeChallenge);
+    authorizeUrl.searchParams.set("code_challenge_method", "S256");
+
+    if (this.props.audience) {
+      authorizeUrl.searchParams.set("audience", this.props.audience);
+    }
+
+    if (this.props.prompts) {
+      authorizeUrl.searchParams.set("prompt", this.props.prompts.join(" "));
+    }
+
+    if (this.props.redirectUri) {
+      authorizeUrl.searchParams.set("redirect_uri", this.props.redirectUri);
+    }
+
+    return authorizeUrl;
+  }
+
+  private newTokenUrl(): URL {
+    const { provider, tokenEndpoint } = this.props;
+    return new URL(`${tokenEndpoint ?? `${provider}/token`}`);
+  }
+
   private applyRefreshBeforeExpirationTime(timeoutMillis: number): number {
     const { refreshBeforeExpirationSeconds } = this.props;
+
     if (
       refreshBeforeExpirationSeconds &&
       timeoutMillis > refreshBeforeExpirationSeconds
     ) {
       return timeoutMillis - refreshBeforeExpirationSeconds * 1000;
     }
+
     return timeoutMillis;
   }
 
@@ -473,16 +532,14 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
   }
 
   private formatDebugDate(date: Date): string {
-    if (Intl && Intl.DateTimeFormat) {
+    if (Intl?.DateTimeFormat) {
       return new Intl.DateTimeFormat(undefined, {
-        // @ts-ignore see https://github.com/microsoft/TypeScript/issues/35865
         dateStyle: "medium",
-        // @ts-ignore see https://github.com/microsoft/TypeScript/issues/35865
         timeStyle: "medium",
       }).format(date);
-    } else {
-      return date.toString();
     }
+
+    return date.toString();
   }
 
   private handleExpired(): void {
@@ -493,17 +550,14 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
   private restoreUri(): void {
     const uri = this.storage.getPreAuthUri();
     this.storage.removePreAuthUri();
+
     if (uri !== null) {
       const location = this.getLocation();
       this.debug("restoreUri: location-replace");
       location.replace(uri);
     }
-    this.removeCodeFromLocation();
-  }
 
-  // For better testability:
-  protected getLocation(): Location {
-    return window.location;
+    this.removeCodeFromLocation();
   }
 
   private debug(...args: unknown[]): void {

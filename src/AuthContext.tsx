@@ -1,6 +1,5 @@
-import React, { useContext, ReactElement } from "react";
-
-import { AuthServiceProps, AuthService } from "./AuthService";
+import React, { useContext, type ReactElement } from "react";
+import { type AuthServiceProps, type AuthService } from "./AuthService";
 
 export type AuthContextProps = {
   authService: AuthService;
@@ -12,9 +11,11 @@ export const AuthContext = React.createContext<AuthContextType>(undefined);
 
 export const useAuth = (): AuthContextProps => {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
     throw new Error("useAuth must be used within a AuthProvider");
   }
+
   return context;
 };
 
@@ -25,7 +26,10 @@ export function withAuth<T>(
     const authProps = useAuth();
     return <ComponentToWrap {...authProps} {...props} />;
   };
-  WrappedComponent.displayName =
-    "withAuth_" + (ComponentToWrap.displayName || ComponentToWrap.name);
+
+  WrappedComponent.displayName = `withAuth_${
+    ComponentToWrap.displayName ?? ComponentToWrap.name
+  }`;
+
   return WrappedComponent;
 }

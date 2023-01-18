@@ -1,6 +1,5 @@
-import React, { ReactElement, PropsWithChildren } from "react";
-
-import { AuthService } from "./AuthService";
+import React, { type ReactElement, type PropsWithChildren } from "react";
+import { type AuthService } from "./AuthService";
 import { AuthContext } from "./AuthContext";
 
 type AuthProviderProps = PropsWithChildren<{

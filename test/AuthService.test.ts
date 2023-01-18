@@ -1,7 +1,15 @@
-import {mock} from "jest-mock-extended";
+import { mock } from "jest-mock-extended";
 import jwtEncode from "jwt-encode";
-import {AuthService, AuthServiceProps, AuthStorage, AuthTokens,} from "../src/AuthService";
-import {PKCECodePair} from "../src/pkce";
+import {
+  AuthService,
+  type AuthServiceProps,
+  type AuthStorage,
+  type AuthTokens,
+} from "../src/AuthService";
+import { type PKCECodePair } from "../src/pkce";
+
+/* eslint-disable @typescript-eslint/ban-types */
+/* eslint-disable @typescript-eslint/naming-convention */
 
 const props: AuthServiceProps = {
   clientId: "testClientID",
@@ -11,16 +19,23 @@ const props: AuthServiceProps = {
   scopes: ["openid", "profile"],
 };
 
-const stubPKCECodePair: PKCECodePair = {
+const stubPkceCodePair: PKCECodePair = {
   codeVerifier: "codeVerifier",
   codeChallenge: "codeChallenge",
-  createdAt: new Date(),
+  createdAt: new Date().toISOString(),
 };
 
+const mockAuthTokens: AuthTokens = {
+  id_token: "id_token",
+  expires_in: 60000
+}
+
 function decodeFormUrlEncodedBody(body: string): Record<string, string> {
-  const searchParams = new URL(`https://example.com?${body}`).searchParams;
+  const { searchParams } = new URL(`https://example.com?${body}`);
   const obj: Record<string, string> = {};
-  searchParams.forEach((value, key) => (obj[key] = value));
+  searchParams.forEach((value, key) => {
+    obj[key] = value;
+  });
   return obj;
 }
 
@@ -32,10 +47,10 @@ const testAuthTokens: AuthTokens = {
   token_type: "token_type",
 };
 
-function newMockFetchWithEmptyResponse(): jest.Mock {
+function newMockFetchWithJsonResponse(data: unknown): jest.Mock {
   const fakeResponse = {
     ok: true,
-    json: (): unknown => ({}),
+    json: (): unknown => (data),
   };
   const mockFetch = jest.fn();
   mockFetch.mockReturnValueOnce(Promise.resolve(fakeResponse));
@@ -43,9 +58,9 @@ function newMockFetchWithEmptyResponse(): jest.Mock {
 }
 
 function newMockStorage(
-  auth?: string | null,
-  pkce?: string | null,
-  preAuthUri?: string | null
+  auth?: string,
+  pkce?: string,
+  preAuthUri?: string
 ): AuthStorage {
   let _auth: string | null = auth ?? null;
   let _pkce: string | null = pkce ?? null;
@@ -87,7 +102,7 @@ describe("AuthService", () => {
     const mockLocation = mock<Location>();
     mockLocation.href = `https://example.com/something?a=b&code=${testCode}&x=y`;
 
-    let fetchTokenArgs: { code: string; isRefresh: boolean } | undefined = undefined;
+    let fetchTokenArgs: { code: string; isRefresh: boolean } | undefined;
 
     class LocalAuthService extends AuthService {
       protected async fetchToken(
@@ -106,6 +121,7 @@ describe("AuthService", () => {
       }
     }
 
+    // eslint-disable-next-line no-new
     new LocalAuthService(props);
 
     expect(fetchTokenArgs).toBeDefined();
@@ -129,6 +145,7 @@ describe("AuthService", () => {
       }
     }
 
+    // eslint-disable-next-line no-new
     new LocalAuthService({
       ...props,
       autoRefresh: true,
@@ -138,9 +155,9 @@ describe("AuthService", () => {
   });
 
   it("fetchToken should send request body", async () => {
-    const mockFetch = newMockFetchWithEmptyResponse();
+    const mockFetch = newMockFetchWithJsonResponse(mockAuthTokens);
 
-    const mockStorage = newMockStorage(null, JSON.stringify(stubPKCECodePair));
+    const mockStorage = newMockStorage(undefined, JSON.stringify(stubPkceCodePair));
 
     class LocalAuthService extends AuthService {
       public async fetchToken(
@@ -160,7 +177,7 @@ describe("AuthService", () => {
       await authService.fetchToken("authorizationCode");
     });
 
-    const formUrlEncodedBody = mockFetch.mock.calls[0][1].body;
+    const formUrlEncodedBody = mockFetch.mock.calls[0][1].body as string;
     const bodyProperties = decodeFormUrlEncodedBody(formUrlEncodedBody);
 
     expect(bodyProperties).toHaveProperty("client_id");
@@ -171,9 +188,9 @@ describe("AuthService", () => {
   });
 
   it("fetchToken should start timer if autoRefresh enabled", async () => {
-    const mockFetch = newMockFetchWithEmptyResponse();
+    const mockFetch = newMockFetchWithJsonResponse(mockAuthTokens);
 
-    const mockStorage = newMockStorage(null, JSON.stringify(stubPKCECodePair));
+    const mockStorage = newMockStorage(undefined, JSON.stringify(stubPkceCodePair));
 
     let called = false;
 
@@ -212,12 +229,12 @@ describe("AuthService", () => {
     });
 
     class LocalAuthService extends AuthService {
-      protected handleInitialCode() {
-        // no initial fetch in this test
-      }
-
       public removeCodeFromLocation(): void {
         super.removeCodeFromLocation();
+      }
+
+      protected handleInitialCode() {
+        // No initial fetch in this test
       }
 
       protected getLocation(): Location {
@@ -285,7 +302,7 @@ describe("AuthService", () => {
       storage: mockStorage,
     });
 
-    expect(() => authService.getIdTokenPayload()).toThrow("No id token");
+    expect(() => authService.getIdTokenPayload()).toThrow("Illegal auth tokens in storage");
   });
 
   it("getIdTokenPayload should return decoded id token", () => {
@@ -329,7 +346,7 @@ describe("AuthService", () => {
   });
 
   it("isPending should return true if pkce and not logged in", () => {
-    const mockStorage = newMockStorage(null, "something-pkce");
+    const mockStorage = newMockStorage(undefined, "something-pkce");
 
     const authService = new AuthService({
       ...props,
@@ -517,7 +534,7 @@ describe("AuthService", () => {
     const pkceCodes: PKCECodePair = {
       codeVerifier: "verifier",
       codeChallenge: "code_challenge",
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
 
     class TestAuthService extends AuthService {
@@ -547,24 +564,27 @@ describe("AuthService", () => {
   });
 });
 
-function withWindowObjects<T>(
-  mocks: { [key: string]: unknown },
+async function withWindowObjects<T>(
+  mocks: Record<string, unknown>,
   callback: () => Promise<T> | T
 ): Promise<T> {
-  const oldWindowObjects: { [key: string]: unknown } = {};
-  for (const key in mocks) {
+  const oldWindowObjects: Record<string, unknown> = {};
+  for (const key of Object.keys(mocks)) {
     if (key in window) {
-      // @ts-ignore
+      // @ts-expect-error unknown property
       oldWindowObjects[key] = window[key];
     }
-    // @ts-ignore
+
+    // @ts-expect-error unknown property
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete window[key];
-    // @ts-ignore
+    // @ts-expect-error unknown property
     window[key] = mocks[key];
   }
+
   return Promise.resolve(callback()).finally(() => {
-    for (const key in mocks) {
-      // @ts-ignore
+    for (const key of Object.keys(mocks)) {
+      // @ts-expect-error unknown property
       window[key] = oldWindowObjects[key];
     }
   });
