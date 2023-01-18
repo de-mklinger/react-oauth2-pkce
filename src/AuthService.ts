@@ -549,15 +549,14 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
 
   private restoreUri(): void {
     const uri = this.storage.getPreAuthUri();
-    this.storage.removePreAuthUri();
 
-    if (uri !== null) {
-      const location = this.getLocation();
+    if (uri === null) {
+      this.removeCodeFromLocation();
+    } else {
+      this.storage.removePreAuthUri();
       this.debug("restoreUri: location-replace");
-      location.replace(uri);
+      this.getLocation().replace(uri);
     }
-
-    this.removeCodeFromLocation();
   }
 
   private debug(...args: unknown[]): void {
