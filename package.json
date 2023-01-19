@@ -1,6 +1,6 @@
 {
   "name": "@de-mklinger/react-oauth2-pkce",
-  "version": "4.0.2",
+  "version": "4.1.0",
   "description": "Authenticate against generic OAuth2 using PKCE",
   "author": "Gardner Bickford <gardner@bickford.nz>",
   "contributors": [
