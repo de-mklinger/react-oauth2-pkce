@@ -5,6 +5,45 @@ import { toUrlEncoded } from "./util";
 /* eslint-disable @typescript-eslint/ban-types */
 /* eslint-disable @typescript-eslint/naming-convention */
 
+/**
+ * The Authorization Server MUST NOT display any authentication or consent
+ * user interface pages. An error is returned if an End-User is not already
+ * authenticated or the Client does not have pre-configured consent for the
+ * requested Claims or does not fulfill other conditions for processing the
+ * request. The error code will typically be login_required,
+ * interaction_required, or another code defined in Section 3.1.2.6. This can
+ * be used as a method to check for existing authentication and/or consent.
+ */
+type PromptNone = "none";
+
+/**
+ * The Authorization Server SHOULD prompt the End-User for reauthentication.
+ * If it cannot reauthenticate the End-User, it MUST return an error,
+ * typically login_required.
+ */
+type PromptLogin = "login";
+
+/**
+ * The Authorization Server SHOULD prompt the End-User for consent before
+ * returning information to the Client. If it cannot obtain consent, it MUST
+ * return an error, typically consent_required.
+ */
+type PromptConsent = "consent"
+
+/**
+ * The Authorization Server SHOULD prompt the End-User to select a user
+ * account. This enables an End-User who has multiple accounts at the
+ * Authorization Server to select amongst the multiple accounts that they
+ * might have current sessions for. If it cannot obtain an account selection
+ * choice made by the End-User, it MUST return an error, typically
+ * account_selection_required.
+ */
+type PromptSelectAccount = "select_account"
+
+export type Prompts =
+  | [PromptNone]
+  | Array<PromptLogin | PromptConsent | PromptSelectAccount>
+
 export type AuthServiceProps = {
   clientId: string;
   clientSecret?: string;
@@ -15,7 +54,7 @@ export type AuthServiceProps = {
   audience?: string;
   redirectUri?: string;
   scopes: string[];
-  prompts?: string[];
+  prompts?: Prompts;
   autoRefresh?: boolean;
   refreshBeforeExpirationSeconds?: number;
   storage?: AuthStorage;
@@ -239,8 +278,8 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
   }
 
-  async login(): Promise<void> {
-    return this.authorize();
+  async login(prompts?: Prompts): Promise<void> {
+    return this.authorize(prompts);
   }
 
   protected handleInitialCode(code: string): void {
@@ -288,7 +327,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
   }
 
   // This will do a full page reload to the OAuth2 provider's login page
-  protected async authorize(): Promise<void> {
+  protected async authorize(prompts?: Prompts): Promise<void> {
     const pkce = await this.createPKCECodes();
     this.storage.setPkce(JSON.stringify(pkce));
     this.storage.setPreAuthUri(this.getLocation().href);
@@ -297,7 +336,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     const { codeChallenge } = pkce;
 
     this.debug("authorize: location-replace");
-    this.getLocation().replace(this.newAuthorizeUrl(codeChallenge).toString());
+    this.getLocation().replace(this.newAuthorizeUrl(codeChallenge, prompts).toString());
   }
 
   protected async createPKCECodes(): Promise<PKCECodePair> {
@@ -460,7 +499,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     return logoutUrl;
   }
 
-  private newAuthorizeUrl(codeChallenge: string): URL {
+  private newAuthorizeUrl(codeChallenge: string, prompts?: Prompts): URL {
     const authorizeUrl = new URL(
       this.props.authorizeEndpoint ?? `${this.props.provider}/authorize`
     );
@@ -475,7 +514,11 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
       authorizeUrl.searchParams.set("audience", this.props.audience);
     }
 
-    if (this.props.prompts) {
+    if (prompts?.length) {
+      console.log("Using parameter prompts:", prompts);
+      authorizeUrl.searchParams.set("prompt", prompts.join(" "));
+    } else if (this.props.prompts?.length) {
+      console.log("Using props prompts:", this.props.prompts);
       authorizeUrl.searchParams.set("prompt", this.props.prompts.join(" "));
     }
 
