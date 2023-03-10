@@ -28,7 +28,7 @@ type PromptLogin = "login";
  * returning information to the Client. If it cannot obtain consent, it MUST
  * return an error, typically consent_required.
  */
-type PromptConsent = "consent"
+type PromptConsent = "consent";
 
 /**
  * The Authorization Server SHOULD prompt the End-User to select a user
@@ -38,11 +38,11 @@ type PromptConsent = "consent"
  * choice made by the End-User, it MUST return an error, typically
  * account_selection_required.
  */
-type PromptSelectAccount = "select_account"
+type PromptSelectAccount = "select_account";
 
 export type Prompts =
   | [PromptNone]
-  | Array<PromptLogin | PromptConsent | PromptSelectAccount>
+  | Array<PromptLogin | PromptConsent | PromptSelectAccount>;
 
 export type AuthServiceProps = {
   clientId: string;
@@ -336,7 +336,9 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     const { codeChallenge } = pkce;
 
     this.debug("authorize: location-replace");
-    this.getLocation().replace(this.newAuthorizeUrl(codeChallenge, prompts).toString());
+    this.getLocation().replace(
+      this.newAuthorizeUrl(codeChallenge, prompts).toString()
+    );
   }
 
   protected async createPKCECodes(): Promise<PKCECodePair> {
