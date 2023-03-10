@@ -1,6 +1,11 @@
 import jwtDecode from "jwt-decode";
-import { createPkceCodes, isPkceCodePair, type PKCECodePair } from "./pkce";
+import { createPkceCodes, isPkceCodePair, type PkceCodePair } from "./pkce";
 import { toUrlEncoded } from "./util";
+import { type AuthServiceStorage } from "./auth-service-storage";
+import { type AuthError, isErrorCode, isErrorDescription } from "./auth-error";
+import { AuthServiceLocalStorage } from "./auth-service-local-storage";
+import { type AuthTokens, DefaultIdTokenPayload, isAuthTokens } from "./auth-tokens";
+import { type AuthorizationCodeRequestBody, type RefreshTokenRequestBody } from "./auth-request";
 
 /* eslint-disable @typescript-eslint/ban-types */
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -18,162 +23,12 @@ export type AuthServiceProps = {
   prompts?: string[];
   autoRefresh?: boolean;
   refreshBeforeExpirationSeconds?: number;
-  storage?: AuthStorage;
+  storage?: AuthServiceStorage;
   debug?: boolean;
 };
 
-export type AuthTokens = {
-  id_token: string;
-  access_token?: string;
-  refresh_token?: string;
-  expires_in: number; // Seconds
-  expires_at?: number; // Calculated on login, in millis
-  token_type?: string;
-  scope?: string;
-};
-
-export function isAuthTokens(o: unknown): o is AuthTokens {
-  if (!o || typeof o !== "object" || Array.isArray(o)) {
-    return false;
-  }
-
-  const oo = o as Record<keyof AuthTokens, unknown>;
-
-  return (
-    typeof oo.id_token === "string" &&
-    (oo.access_token === undefined || typeof oo.access_token === "string") &&
-    (oo.refresh_token === undefined || typeof oo.refresh_token === "string") &&
-    typeof oo.expires_in === "number" &&
-    (oo.expires_at === undefined || typeof oo.expires_at === "number") &&
-    (oo.token_type === undefined || typeof oo.token_type === "string") &&
-    (oo.scope === undefined || typeof oo.scope === "string")
-  );
-}
-
-export type TokenRequestBody = {
-  client_id: string;
-  redirect_uri: string | undefined;
-  client_secret: string | undefined;
-  grant_type: string;
-};
-
-export type AuthorizationCodeRequestBody = {
-  grant_type: "authorization_code";
-  code: string;
-  code_verifier: string;
-} & TokenRequestBody;
-
-export type RefreshTokenRequestBody = {
-  grant_type: "refresh_token";
-  refresh_token: string;
-} & TokenRequestBody;
-
-export type IdTokenPayload = {
-  [propName: string]: unknown;
-  iss?: string;
-  sub?: string;
-  aud?: string | string[];
-  jti?: string;
-  nbf?: number;
-  exp?: number;
-  iat?: number;
-};
-
-export type DebugFn = (...args: unknown[]) => void;
-
-export type AuthStorage = {
-  removeAuth(): void;
-
-  getAuth(): string | null;
-
-  setAuth(auth: string): void;
-
-  removePkce(): void;
-
-  getPkce(): string | null;
-
-  setPkce(pkce: string): void;
-
-  removePreAuthUri(): void;
-
-  getPreAuthUri(): string | null;
-
-  setPreAuthUri(preAuthUri: string): void;
-};
-
-export class AuthLocalStorage implements AuthStorage {
-  private readonly prefix: string;
-  private readonly debug: DebugFn;
-
-  constructor(prefix?: string, debug?: DebugFn) {
-    this.prefix = prefix ?? "";
-    this.debug =
-      debug ??
-      (() => {
-        // Do nothing
-      });
-  }
-
-  removeAuth(): void {
-    this.removeItem("auth");
-  }
-
-  getAuth(): string | null {
-    return this.getItem("auth");
-  }
-
-  setAuth(auth: string): void {
-    this.setItem("auth", auth);
-  }
-
-  removePkce(): void {
-    this.removeItem("pkce");
-  }
-
-  getPkce(): string | null {
-    return this.getItem("pkce");
-  }
-
-  setPkce(pkce: string): void {
-    this.setItem("pkce", pkce);
-  }
-
-  removePreAuthUri(): void {
-    this.removeItem("preAuthUri");
-  }
-
-  getPreAuthUri(): string | null {
-    return this.getItem("preAuthUri");
-  }
-
-  setPreAuthUri(preAuthUri: string): void {
-    this.setItem("preAuthUri", preAuthUri);
-  }
-
-  protected getItem(key: string): string | null {
-    const fullKey = this.getFullItemKey(key);
-    return window.localStorage.getItem(fullKey);
-  }
-
-  protected removeItem(key: string): void {
-    const fullKey = this.getFullItemKey(key);
-    this.debug("Remove storage item:", key);
-    window.localStorage.removeItem(fullKey);
-  }
-
-  protected setItem(key: string, value: string): void {
-    const fullKey = this.getFullItemKey(key);
-    this.debug("Set storage item:", fullKey);
-    window.localStorage.setItem(fullKey, value);
-  }
-
-  protected getFullItemKey(key: string): string {
-    return this.prefix + key;
-  }
-}
-
-export class AuthService<IdTokenPayloadType = IdTokenPayload> {
-  private readonly storage: AuthStorage;
+export class AuthService<IdTokenPayloadType = DefaultIdTokenPayload> {
+  private readonly storage: AuthServiceStorage;
   private timeout?: number;
 
   constructor(private readonly props: AuthServiceProps) {
@@ -271,10 +126,29 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     }
   }
 
-  protected getPkce(): PKCECodePair {
+  protected getErrorFromLocation(): AuthError | null {
+    const params = new URL(this.getLocation().href).searchParams;
+
+    const error = params.get("error");
+    if (!isErrorCode(error)) {
+      return null;
+    }
+
+    const errorDescriptionParam = params.get("error_description");
+    const errorDescription = isErrorDescription(errorDescriptionParam)
+      ? errorDescriptionParam
+      : undefined
+
+    return {
+      error,
+      errorDescription
+    }
+  }
+
+  protected getPkce(): PkceCodePair {
     const pkce = this.storage.getPkce();
 
-    if (pkce === null) {
+    if (!pkce) {
       throw new Error("PKCE pair not found in storage");
     }
 
@@ -300,7 +174,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     this.getLocation().replace(this.newAuthorizeUrl(codeChallenge).toString());
   }
 
-  protected async createPKCECodes(): Promise<PKCECodePair> {
+  protected async createPKCECodes(): Promise<PkceCodePair> {
     return createPkceCodes();
   }
 
@@ -320,10 +194,10 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         client_id: this.props.clientId,
         client_secret: this.props.clientSecret,
         redirect_uri: this.props.redirectUri,
-        refresh_token: refreshToken,
+        refresh_token: refreshToken
       };
     } else {
-      const pkce: PKCECodePair = this.getPkce();
+      const pkce: PkceCodePair = this.getPkce();
       const { codeVerifier } = pkce;
       payload = {
         grant_type: "authorization_code",
@@ -331,16 +205,16 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
         client_secret: this.props.clientSecret,
         redirect_uri: this.props.redirectUri,
         code,
-        code_verifier: codeVerifier,
+        code_verifier: codeVerifier
       };
     }
 
     const response = await fetch(this.newTokenUrl().toString(), {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/x-www-form-urlencoded"
       },
       method: "POST",
-      body: toUrlEncoded({ ...payload }),
+      body: toUrlEncoded({ ...payload })
     }).finally(() => {
       this.storage.removePkce();
     });
@@ -423,7 +297,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
   }
 
   private newDefaultStorage() {
-    return new AuthLocalStorage(undefined, (...args) => {
+    return new AuthServiceLocalStorage(undefined, (...args) => {
       this.debug(...args);
     });
   }
@@ -535,7 +409,7 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
     if (Intl?.DateTimeFormat) {
       return new Intl.DateTimeFormat(undefined, {
         dateStyle: "medium",
-        timeStyle: "medium",
+        timeStyle: "medium"
       }).format(date);
     }
 
@@ -550,12 +424,12 @@ export class AuthService<IdTokenPayloadType = IdTokenPayload> {
   private restoreUri(): void {
     const uri = this.storage.getPreAuthUri();
 
-    if (uri === null) {
-      this.removeCodeFromLocation();
-    } else {
+    if (uri) {
       this.storage.removePreAuthUri();
       this.debug("restoreUri: location-replace");
       this.getLocation().replace(uri);
+    } else {
+      this.removeCodeFromLocation();
     }
   }
 

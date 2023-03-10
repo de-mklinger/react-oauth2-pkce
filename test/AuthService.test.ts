@@ -3,10 +3,10 @@ import jwtEncode from "jwt-encode";
 import {
   AuthService,
   type AuthServiceProps,
-  type AuthStorage,
+  type AuthServiceStorage,
   type AuthTokens,
 } from "../src/AuthService";
-import { type PKCECodePair } from "../src/pkce";
+import { type PkceCodePair } from "../src/pkce";
 
 /* eslint-disable @typescript-eslint/ban-types */
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -19,7 +19,7 @@ const props: AuthServiceProps = {
   scopes: ["openid", "profile"],
 };
 
-const stubPkceCodePair: PKCECodePair = {
+const stubPkceCodePair: PkceCodePair = {
   codeVerifier: "codeVerifier",
   codeChallenge: "codeChallenge",
   createdAt: new Date().toISOString(),
@@ -531,7 +531,7 @@ describe("AuthService", () => {
     const mockLocation = mock<Location>();
     mockLocation.href = "https://example.com/before_auth";
 
-    const pkceCodes: PKCECodePair = {
+    const pkceCodes: PkceCodePair = {
       codeVerifier: "verifier",
       codeChallenge: "code_challenge",
       createdAt: new Date().toISOString(),
@@ -542,7 +542,7 @@ describe("AuthService", () => {
         return super.authorize();
       }
 
-      protected async createPKCECodes(): Promise<PKCECodePair> {
+      protected async createPKCECodes(): Promise<PkceCodePair> {
         return pkceCodes;
       }
 

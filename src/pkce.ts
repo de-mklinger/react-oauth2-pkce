@@ -1,18 +1,17 @@
 import { encode } from "base64-arraybuffer";
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export type PKCECodePair = {
+export type PkceCodePair = {
   codeVerifier: string;
   codeChallenge: string;
   createdAt: string;
 };
 
-export function isPkceCodePair(o: unknown): o is PKCECodePair {
+export function isPkceCodePair(o: unknown): o is PkceCodePair {
   if (!o || typeof o !== "object" || Array.isArray(o)) {
     return false;
   }
 
-  const oo = o as Record<keyof PKCECodePair, unknown>;
+  const oo = o as Record<keyof PkceCodePair, unknown>;
 
   return (
     typeof oo.codeVerifier === "string" &&
@@ -41,7 +40,7 @@ const sha256 = async (data: Uint8Array | string): Promise<Uint8Array> => {
     .then((arrayBuffer) => new Uint8Array(arrayBuffer));
 };
 
-export const createPkceCodes = async (): Promise<PKCECodePair> => {
+export const createPkceCodes = async (): Promise<PkceCodePair> => {
   const codeVerifier = base64UrlEncode(randomBytes(64));
   const codeChallenge = base64UrlEncode(await sha256(codeVerifier));
   const createdAt = new Date().toISOString();
